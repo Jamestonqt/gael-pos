@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Gael Store POS - Fast, offline-first Point of Sale, inventory manager, and customer credit ledger built for retail shops." />
+    <meta name="author" content="Gael Store" />
+    <meta name="robots" content="index, follow" />
+    
+    <!-- Open Graph / Social Meta -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Gael Store POS | Point of Sale & Credit Tracker" />
+    <meta property="og:description" content="Fast, offline-first Point of Sale, inventory manager, and customer credit ledger." />
+    <meta property="og:image" content="/logo.jpg" />
+
+    <!-- iOS / PWA Capable -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gael Store" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Google Fonts Preconnect & Inter / JetBrains Mono font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+
+    <title>Gael Store POS | Point of Sale & Credit Tracker</title>
+  </head>
+  <body class="h-full bg-slate-100 text-slate-800 antialiased selection:bg-blue-600 selection:text-white">
+    <noscript>
+      <div style="padding: 20px; text-align: center; font-family: sans-serif;">
+        <h2>JavaScript Required</h2>
+        <p>Please enable JavaScript to run Gael Store POS offline application.</p>
+      </div>
+    </noscript>
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

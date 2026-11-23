@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#D97706"/>
+  <rect x="40" y="40" width="432" height="432" rx="64" fill="#F59E0B" fill-opacity="0.2"/>
+  <!-- Sari-Sari store roof awning pattern -->
+  <path d="M96 160L256 96L416 160V192H96V160Z" fill="#FFFFFF"/>
+  <path d="M96 192C96 216 128 216 128 192C128 216 160 216 160 192C160 216 192 216 192 192C192 216 224 216 224 192C224 216 256 216 256 192C256 216 288 216 288 192C288 216 320 216 320 192C320 216 352 216 352 192C352 216 384 216 384 192C384 216 416 216 416 192" fill="#B45309"/>
+  <!-- Store Counter / Window Grill -->
+  <rect x="112" y="230" width="288" height="170" rx="16" fill="#78350F"/>
+  <rect x="128" y="246" width="256" height="138" rx="8" fill="#FEF3C7"/>
+  <!-- Peso Symbol in center -->
+  <text x="256" y="340" font-family="system-ui, -apple-system, sans-serif" font-size="96" font-weight="900" fill="#B45309" text-anchor="middle">₱</text>
+  <!-- Accent badge -->
+  <circle cx="390" cy="120" r="48" fill="#15803D"/>
+  <text x="390" y="132" font-family="system-ui, sans-serif" font-size="32" font-weight="bold" fill="#FFFFFF" text-anchor="middle">POS</text>
+</svg>
