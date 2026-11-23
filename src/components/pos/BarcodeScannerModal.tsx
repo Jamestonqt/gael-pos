@@ -44,6 +44,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [isHttpsWarning, setIsHttpsWarning] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
+  const [manualInputCode, setManualInputCode] = useState('');
 
   // Scan feedback toast state
   const [lastScannedToast, setLastScannedToast] = useState<{
@@ -284,6 +285,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }, 600);
   };
 
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualInputCode.trim()) return;
+    const code = manualInputCode.trim();
+    setManualInputCode('');
+    lastScanTimestampRef.current = 0;
+    isProcessingScanRef.current = false;
+    onScanSuccess(code);
+  };
+
   const handleOpenQuickAdd = () => {
     setNewProdName('');
     setNewProdCategory('Snacks');
@@ -399,25 +410,66 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         {/* Viewfinder Area */}
         <div className="relative bg-black flex-1 flex flex-col items-center justify-center min-h-[290px] overflow-hidden">
           {cameraError ? (
-            <div className="p-6 text-center max-w-sm space-y-3">
+            <div className="p-6 text-center max-w-sm space-y-3.5 my-auto">
               <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-6 h-6" />
               </div>
-              <h3 className="font-bold text-white text-sm">
-                {isHttpsWarning ? 'Camera Requires HTTPS / Localhost' : 'Camera Unavailable'}
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">{cameraError}</p>
-              {isHttpsWarning && (
-                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700 text-[11px] text-slate-300 text-left space-y-1">
-                  <div className="font-bold text-brand-400 flex items-center gap-1">
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>Quick Tip:</span>
-                  </div>
-                  <p>
-                    You can still use any handheld/Bluetooth barcode scanner directly into the search bar, or deploy via HTTPS on Netlify / Vercel.
-                  </p>
-                </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">
+                  {isHttpsWarning ? 'Camera Requires HTTPS or Localhost' : 'Camera Unavailable'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">{cameraError}</p>
+              </div>
+
+              {/* Direct One-Click Switch to Localhost button if opened over network IP */}
+              {isHttpsWarning && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                <a
+                  href={`http://localhost:${window.location.port || '4173'}${window.location.pathname}`}
+                  className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-3 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs rounded-xl shadow-md transition"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open on http://localhost:{window.location.port || '4173'}</span>
+                </a>
               )}
+
+              {/* Manual Barcode / USB Scanner Input */}
+              <div className="pt-2 border-t border-slate-800 text-left">
+                <label className="text-[11px] font-bold text-slate-300 mb-1.5 block">
+                  Scan with USB barcode gun or enter barcode:
+                </label>
+                <form onSubmit={handleManualSubmit} className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="e.g. 4800016644800 or SKU"
+                    value={manualInputCode}
+                    onChange={(e) => setManualInputCode(e.target.value)}
+                    className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={!manualInputCode.trim()}
+                    className="px-3.5 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow transition"
+                  >
+                    Lookup
+                  </button>
+                </form>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCameraError(null);
+                    setIsHttpsWarning(false);
+                    startScanner();
+                  }}
+                  className="text-brand-400 hover:text-brand-300 font-semibold inline-flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Retry camera detection
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -626,8 +678,22 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         {/* Footer Actions */}
         <div className="px-5 py-3 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
           <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-400" />
-            <span>Rear camera active</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                scannerActive
+                  ? 'bg-emerald-400 animate-pulse'
+                  : cameraError
+                  ? 'bg-amber-400'
+                  : 'bg-brand-400'
+              }`}
+            />
+            <span>
+              {scannerActive
+                ? 'Rear camera active'
+                : cameraError
+                ? 'Camera inactive (manual input ready)'
+                : 'Initializing camera...'}
+            </span>
           </div>
 
           <button
