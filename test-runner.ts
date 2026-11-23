@@ -145,4 +145,21 @@ assert.strictEqual(receipt.startsWith('GL-'), true);
 assert.strictEqual(receipt.endsWith('-1005'), true);
 console.log(`✓ Receipt generator format verified: ${receipt}`);
 
-console.log('--- ALL 8 TESTS PASSED SUCCESSFULLY! ---');
+// Test 9: Barcode Lookup & Leading Zero Normalization
+console.log('Test 9: Barcode Lookup & Leading Zero Normalization');
+function matchBarcode(productBarcode: string, scannedCode: string): boolean {
+  const cleanLower = scannedCode.trim().toLowerCase();
+  const cleanStripped = cleanLower.replace(/^0+/, '');
+  const pBarcode = (productBarcode || '').trim().toLowerCase();
+  return (
+    pBarcode === cleanLower ||
+    (Boolean(cleanStripped) && pBarcode.replace(/^0+/, '') === cleanStripped)
+  );
+}
+assert.strictEqual(matchBarcode('4800016644883', '4800016644883'), true);
+assert.strictEqual(matchBarcode('4800016644883', '04800016644883'), true); // EAN-13 padding
+assert.strictEqual(matchBarcode('04800016644883', '4800016644883'), true); // UPC to EAN-13
+assert.strictEqual(matchBarcode('4800016644883', '4800016644884'), false);
+console.log('✓ Barcode lookup and normalization verified.');
+
+console.log('--- ALL 9 TESTS PASSED SUCCESSFULLY! ---');

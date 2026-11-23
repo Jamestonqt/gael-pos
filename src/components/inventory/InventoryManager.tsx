@@ -71,9 +71,9 @@ export const InventoryManager: React.FC = () => {
     return products.filter((p) => {
       const matchesSearch =
         !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.barcode.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q);
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.barcode || '').toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q);
 
       const matchesCat =
         selectedCategory === 'All' || p.category === selectedCategory;

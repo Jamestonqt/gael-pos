@@ -39,7 +39,7 @@ export const DailyReport: React.FC = () => {
 
   // Filter records by selected date
   const daySales = useMemo(() => {
-    return sales.filter((s) => s.created_at.slice(0, 10) === selectedDate);
+    return sales.filter((s) => (s.created_at || '').slice(0, 10) === selectedDate);
   }, [sales, selectedDate]);
 
   const completedSales = useMemo(() => {
@@ -47,11 +47,11 @@ export const DailyReport: React.FC = () => {
   }, [daySales]);
 
   const dayWalletLogs = useMemo(() => {
-    return walletLogs.filter((w) => w.created_at.slice(0, 10) === selectedDate);
+    return walletLogs.filter((w) => (w.created_at || '').slice(0, 10) === selectedDate);
   }, [walletLogs, selectedDate]);
 
   const dayTransactions = useMemo(() => {
-    return transactions.filter((t) => t.created_at.slice(0, 10) === selectedDate);
+    return transactions.filter((t) => (t.created_at || '').slice(0, 10) === selectedDate);
   }, [transactions, selectedDate]);
 
   // 1. Gross Sales (Today's completed sales)
@@ -255,9 +255,9 @@ export const DailyReport: React.FC = () => {
             <span className="text-[11px] font-bold uppercase tracking-wider">
               5. E-Load & GCash Fees Earned
             </span>
-            <Smartphone className="w-4 h-4 text-purple-600" />
+            <Smartphone className="w-4 h-4 text-brand-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-purple-700">
+          <div className="text-2xl sm:text-3xl font-black text-brand-700">
             +{formatPeso(walletFeesEarned)}
           </div>
           <p className="text-[11px] text-slate-500 font-medium">

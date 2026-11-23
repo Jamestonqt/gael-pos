@@ -93,7 +93,7 @@ const MainLayout: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4">
         {activeTab === 'pos' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 h-[calc(100vh-8.5rem)] min-h-[550px]">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-[calc(100dvh-7.5rem)] lg:h-[calc(100vh-7.5rem)] lg:min-h-[560px]">
             {/* Left: Product Grid & Live Search (7 cols on desktop) */}
             <div className="lg:col-span-7 flex flex-col h-full min-h-0">
               <ProductGrid />
@@ -103,7 +103,7 @@ const MainLayout: React.FC = () => {
             <div
               className={`lg:col-span-5 h-full min-h-0 ${
                 mobileCartOpen
-                  ? 'fixed inset-0 z-50 p-4 bg-black/60 backdrop-blur-sm lg:relative lg:p-0 lg:bg-transparent'
+                  ? 'fixed inset-0 z-50 p-3 sm:p-4 bg-black/70 backdrop-blur-sm lg:relative lg:p-0 lg:bg-transparent'
                   : 'hidden lg:block'
               }`}
             >
@@ -111,7 +111,7 @@ const MainLayout: React.FC = () => {
                 {mobileCartOpen && (
                   <button
                     onClick={() => setMobileCartOpen(false)}
-                    className="lg:hidden absolute -top-12 right-2 text-white bg-slate-900 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-lg"
+                    className="lg:hidden absolute top-2 right-2 text-white bg-slate-900/90 border border-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-lg z-10"
                   >
                     <X className="w-4 h-4" />
                     <span>Close Cart</span>

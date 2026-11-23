@@ -177,48 +177,43 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur text-white shadow-lg border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-3 sm:px-4">
           {/* Top Brand & Status Bar */}
-          <div className="flex items-center justify-between h-14 sm:h-16 gap-2">
+          <div className="flex items-center justify-between h-12 sm:h-13 gap-2">
             {/* Logo & Store Identity */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white flex items-center justify-center shadow-md p-1 shrink-0 overflow-hidden border border-slate-700/80">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white flex items-center justify-center shadow-sm p-1 shrink-0 overflow-hidden border border-slate-700/80">
                 <img
                   src="/logo.jpg"
                   alt="Gael Store GS Logo"
                   className="w-full h-full object-contain"
-                  width="44"
-                  height="44"
+                  width="36"
+                  height="36"
                 />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-white truncate">
-                    Gael Store
-                  </h1>
-                  <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-brand-500/20 text-brand-400 border border-brand-500/30 rounded">
-                    POS
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 truncate hidden md:block">
-                  {settings.store_name}
-                </p>
+              <div className="min-w-0 flex items-center gap-1.5">
+                <h1 className="font-extrabold text-sm sm:text-base tracking-tight text-white truncate">
+                  Gael Store
+                </h1>
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-brand-500/20 text-brand-300 border border-brand-500/30 rounded">
+                  POS
+                </span>
               </div>
             </div>
 
             {/* Middle: Live Clock (Tablet & Desktop) */}
             {currentTime && (
-              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-800/80 border border-slate-700/70 rounded-full text-slate-300 text-xs font-mono">
-                <Clock className="w-3.5 h-3.5 text-brand-400" />
-                <span className="font-bold text-white">{currentTime}</span>
-                <span className="text-slate-400">•</span>
-                <span className="text-slate-300">{currentDate}</span>
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800/80 border border-slate-700/70 rounded-full text-slate-300 text-xs font-mono">
+                <Clock className="w-3 h-3 text-brand-400" />
+                <span className="font-bold text-white text-[11px]">{currentTime}</span>
+                <span className="text-slate-400 text-[10px]">•</span>
+                <span className="text-slate-300 text-[11px]">{currentDate}</span>
               </div>
             )}
 
             {/* Sync Status Badge & Action Controls */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-1.5">
               {/* Sync Status Indicator */}
               <div
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold select-none border transition-colors ${
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold select-none border transition-colors ${
                   syncState === 'online-synced'
                     ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
                     : syncState === 'offline-mode'
@@ -237,27 +232,27 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               >
                 {syncState === 'online-synced' && (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <Wifi className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="hidden xs:inline text-[11px]">Synced</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <Wifi className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span className="hidden xs:inline text-[10px]">Synced</span>
                   </>
                 )}
                 {syncState === 'offline-mode' && (
                   <>
-                    <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span className="hidden xs:inline text-[11px]">Offline</span>
+                    <WifiOff className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span className="hidden xs:inline text-[10px]">Offline</span>
                   </>
                 )}
                 {syncState === 'local-only' && (
                   <>
-                    <Database className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span className="hidden xs:inline text-[11px]">Local DB</span>
+                    <Database className="w-3 h-3 text-sky-400 shrink-0" />
+                    <span className="hidden xs:inline text-[10px]">Local DB</span>
                   </>
                 )}
                 {syncState === 'syncing' && (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 text-brand-400 animate-spin shrink-0" />
-                    <span className="text-[11px]">Syncing...</span>
+                    <RefreshCw className="w-3 h-3 text-brand-400 animate-spin shrink-0" />
+                    <span className="text-[10px]">Syncing...</span>
                   </>
                 )}
               </div>
@@ -268,11 +263,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                   playSound.tap();
                   triggerSync();
                 }}
-                className="touch-btn p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center"
+                className="touch-btn p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center"
                 title="Sync Now with Cloud Database"
                 aria-label="Sync Now"
               >
-                <RefreshCw className="w-4 h-4 text-brand-400" />
+                <RefreshCw className="w-3.5 h-3.5 text-brand-400" />
               </button>
 
               {/* Backup & Restore Button */}
@@ -282,11 +277,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                   setBackupNotice(null);
                   setShowBackupModal(true);
                 }}
-                className="touch-btn p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center"
+                className="touch-btn p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center"
                 title="Backup and Restore Data"
                 aria-label="Backup and Restore Data"
               >
-                <Download className="w-4 h-4 text-emerald-400" />
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
               </button>
 
               {/* Owner Settings Button */}
@@ -304,11 +299,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                   setSettingsSuccess(null);
                   setShowSettingsModal(true);
                 }}
-                className="touch-btn p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center"
+                className="touch-btn p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center"
                 title="Store Settings & PIN"
                 aria-label="Store Settings"
               >
-                <Settings className="w-4 h-4 text-slate-300" />
+                <Settings className="w-3.5 h-3.5 text-slate-300" />
               </button>
             </div>
           </div>

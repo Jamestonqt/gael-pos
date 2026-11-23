@@ -15,10 +15,8 @@ import {
   CreditCard,
   ShoppingBag,
   Percent,
-  Camera,
 } from 'lucide-react';
 import { ReceiptModal } from './ReceiptModal';
-import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { Sale, UtangCustomer } from '../../types';
 import { playSound } from '../../utils/audio';
 
@@ -46,7 +44,6 @@ export const CartPanel: React.FC = () => {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showScannerModal, setShowScannerModal] = useState(false);
 
   const numericCashTendered = parseFloat(cashTendered) || 0;
   const numericDiscount = parseFloat(discountAmount) || 0;
@@ -57,11 +54,12 @@ export const CartPanel: React.FC = () => {
   const hasSufficientCash = numericCashTendered >= finalTotalAmount;
 
   // Filter customers for Credit modal
+  const searchLower = customerSearch.toLowerCase();
   const filteredCustomers = customers.filter(
     (c) =>
-      c.full_name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      c.nickname.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      c.contact_number.includes(customerSearch)
+      (c.full_name || '').toLowerCase().includes(searchLower) ||
+      (c.nickname || '').toLowerCase().includes(searchLower) ||
+      (c.contact_number || '').includes(customerSearch)
   );
 
   const handleQuickCash = (amount: number) => {
@@ -181,32 +179,18 @@ export const CartPanel: React.FC = () => {
               {cart.reduce((sum, i) => sum + i.quantity, 0)} items
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          {cart.length > 0 && (
             <button
               onClick={() => {
                 playSound.tap();
-                setShowScannerModal(true);
+                clearCart();
               }}
-              aria-label="Scan item barcode with camera"
-              className="touch-btn flex items-center gap-1 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg shadow-sm border border-slate-700 transition"
-              title="Open Camera Barcode Scanner"
+              aria-label="Clear all items from shopping cart"
+              className="text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition"
             >
-              <Camera className="w-3.5 h-3.5 text-brand-400" />
-              <span>Scan</span>
+              Clear Cart
             </button>
-            {cart.length > 0 && (
-              <button
-                onClick={() => {
-                  playSound.tap();
-                  clearCart();
-                }}
-                aria-label="Clear all items from shopping cart"
-                className="text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Cart Items List */}
@@ -366,11 +350,11 @@ export const CartPanel: React.FC = () => {
             </div>
 
             {/* Quick Peso Denominations Buttons */}
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
               <button
                 type="button"
                 onClick={handleExactCash}
-                className="touch-btn py-1 px-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] text-center"
+                className="touch-btn h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-extrabold text-xs flex items-center justify-center border border-slate-200"
               >
                 Exact
               </button>
@@ -379,7 +363,7 @@ export const CartPanel: React.FC = () => {
                   key={den}
                   type="button"
                   onClick={() => handleQuickCash(den)}
-                  className="touch-btn py-1 px-1 rounded bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-900 font-bold text-[11px] text-center"
+                  className="touch-btn h-9 rounded-xl bg-brand-50/70 hover:bg-brand-100 border border-brand-200 text-brand-900 font-extrabold text-xs flex items-center justify-center transition"
                 >
                   ₱{den}
                 </button>
@@ -410,26 +394,26 @@ export const CartPanel: React.FC = () => {
           )}
 
           {/* Three Checkout Payment Buttons */}
-          <div className="space-y-1.5 pt-1">
+          <div className="space-y-2 pt-1">
             {/* Cash Button */}
             <button
               onClick={handleCheckoutCash}
               disabled={cart.length === 0 || isProcessing}
-              className="touch-btn w-full flex items-center justify-between px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-md transition"
+              className="touch-btn w-full flex items-center justify-between px-4 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-md transition"
             >
               <div className="flex items-center gap-2">
                 <Banknote className="w-5 h-5" />
                 <span>Pay with CASH</span>
               </div>
-              <span>{formatPeso(finalTotalAmount)}</span>
+              <span className="text-base">{formatPeso(finalTotalAmount)}</span>
             </button>
 
             {/* GCash / Maya Button */}
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleCheckoutDigital('GCash')}
                 disabled={cart.length === 0 || isProcessing}
-                className="touch-btn flex items-center justify-center gap-1.5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                className="touch-btn flex items-center justify-center gap-1.5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition"
               >
                 <Smartphone className="w-4 h-4" />
                 <span>GCash Pay</span>
@@ -438,7 +422,7 @@ export const CartPanel: React.FC = () => {
               <button
                 onClick={() => handleCheckoutDigital('Maya')}
                 disabled={cart.length === 0 || isProcessing}
-                className="touch-btn flex items-center justify-center gap-1.5 py-2.5 bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                className="touch-btn flex items-center justify-center gap-1.5 py-3 bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition"
               >
                 <CreditCard className="w-4 h-4" />
                 <span>Maya Pay</span>
@@ -449,7 +433,7 @@ export const CartPanel: React.FC = () => {
             <button
               onClick={handleOpenUtangModal}
               disabled={cart.length === 0 || isProcessing}
-              className="touch-btn w-full flex items-center justify-center gap-2 py-2.5 bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-md border border-brand-600 transition"
+              className="touch-btn w-full flex items-center justify-center gap-2 py-3 bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-xl shadow-md border border-brand-600 transition"
             >
               <BookOpen className="w-4 h-4" />
               <span>Charge to Customer Credit</span>
@@ -578,12 +562,6 @@ export const CartPanel: React.FC = () => {
       <ReceiptModal
         sale={completedSale}
         onClose={() => setCompletedSale(null)}
-      />
-
-      {/* Camera Barcode Scanner Modal */}
-      <BarcodeScannerModal
-        isOpen={showScannerModal}
-        onClose={() => setShowScannerModal(false)}
       />
     </>
   );

@@ -65,10 +65,10 @@ export const UtangTracker: React.FC = () => {
     return customers.filter((c) => {
       const matchesSearch =
         !q ||
-        c.full_name.toLowerCase().includes(q) ||
-        c.nickname.toLowerCase().includes(q) ||
-        c.contact_number.includes(q) ||
-        c.address_note.toLowerCase().includes(q);
+        (c.full_name || '').toLowerCase().includes(q) ||
+        (c.nickname || '').toLowerCase().includes(q) ||
+        (c.contact_number || '').includes(q) ||
+        (c.address_note || '').toLowerCase().includes(q);
 
       if (!matchesSearch) return false;
 

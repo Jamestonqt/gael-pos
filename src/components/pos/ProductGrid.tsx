@@ -56,9 +56,9 @@ export const ProductGrid: React.FC = () => {
 
       const matchesSearch =
         !query ||
-        prod.name.toLowerCase().includes(query) ||
-        prod.barcode.toLowerCase().includes(query) ||
-        prod.sku.toLowerCase().includes(query);
+        (prod.name || '').toLowerCase().includes(query) ||
+        (prod.barcode || '').toLowerCase().includes(query) ||
+        (prod.sku || '').toLowerCase().includes(query);
 
       return matchesCat && matchesSearch;
     });
@@ -101,27 +101,19 @@ export const ProductGrid: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
           ) : (
-            <button
-              onClick={() => {
-                playSound.tap();
-                setShowScannerModal(true);
-              }}
-              aria-label="Scan barcode with camera"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-brand-600 transition"
-              title="Open Camera Barcode Scanner"
-            >
-              <Camera className="w-5 h-5" />
-            </button>
+            <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-300 pointer-events-none">
+              <Barcode className="w-5 h-5" />
+            </div>
           )}
         </div>
 
-        {/* Scan Barcode Camera Button */}
+        {/* Unified Single Barcode Scanner Button */}
         <button
           onClick={() => {
             playSound.tap();
             setShowScannerModal(true);
           }}
-          aria-label="Open mobile camera barcode scanner"
+          aria-label="Open camera barcode scanner"
           className="touch-btn flex items-center justify-center gap-1.5 px-3.5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-2xl shadow-sm border border-slate-700 shrink-0"
         >
           <Camera className="w-4 h-4 text-brand-400" />
@@ -198,18 +190,18 @@ export const ProductGrid: React.FC = () => {
                   key={product.id}
                   onClick={() => handleProductClick(product)}
                   aria-label={`Add ${product.name} to cart, ${formatPeso(product.selling_price)}`}
-                  className={`touch-btn text-left p-3 rounded-2xl bg-white border border-slate-200 hover:border-brand-400 hover:shadow-card-hover transition-all flex flex-col justify-between relative group ${
+                  className={`touch-btn text-left p-3 rounded-2xl bg-white border border-slate-200/90 hover:border-brand-500 hover:shadow-card-hover transition-all flex flex-col justify-between relative group ${
                     isOutOfStock ? 'opacity-60 bg-slate-50' : ''
                   }`}
                 >
-                  {/* Top: Category Tag & Bottle Deposit Tag */}
+                  {/* Top: Category Label & Optional Bottle Deposit Badge */}
                   <div>
-                    <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <span className="text-[10px] font-semibold text-slate-500 truncate uppercase tracking-wider">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
                         {product.category}
                       </span>
                       {product.has_bottle_deposit && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded">
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded shrink-0">
                           +₱{product.bottle_deposit_fee} dep
                         </span>
                       )}
@@ -221,45 +213,23 @@ export const ProductGrid: React.FC = () => {
                     </h3>
                   </div>
 
-                  {/* Bottom: Stock Status & Price */}
-                  <div className="pt-2 mt-2 border-t border-slate-100 flex items-end justify-between">
-                    <div>
-                      {/* Stock Indicator */}
-                      <div className="flex items-center gap-1 text-[11px] mb-0.5">
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            isOutOfStock
-                              ? 'bg-red-500'
-                              : isLowStock
-                              ? 'bg-amber-500'
-                              : 'bg-emerald-500'
-                          }`}
-                        />
-                        <span
-                          className={`font-semibold ${
-                            isOutOfStock
-                              ? 'text-red-600 font-bold'
-                              : isLowStock
-                              ? 'text-amber-600 font-bold'
-                              : 'text-slate-500'
-                          }`}
-                        >
-                          {isOutOfStock
-                            ? 'Out of stock'
-                            : `${product.stock_qty} ${product.unit_label || 'pcs'}`}
-                        </span>
-                      </div>
+                  {/* Bottom: Crisp Price & Stock Status Pill */}
+                  <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between gap-1">
+                    <span className="text-base sm:text-lg font-black text-brand-600 tracking-tight">
+                      {formatPeso(product.selling_price)}
+                    </span>
 
-                      {/* Selling Price */}
-                      <div className="text-base font-black text-brand-600 leading-none">
-                        {formatPeso(product.selling_price)}
-                      </div>
-                    </div>
-
-                    {/* Quick Add Icon Button */}
-                    <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-brand-600 group-hover:text-white text-slate-700 flex items-center justify-center transition-colors shadow-sm shrink-0">
-                      <Plus className="w-4 h-4 stroke-[2.5]" />
-                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                        isOutOfStock
+                          ? 'bg-red-50 text-red-600 border border-red-200'
+                          : isLowStock
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {isOutOfStock ? 'Out of stock' : `${product.stock_qty} ${product.unit_label || 'pcs'}`}
+                    </span>
                   </div>
                 </button>
               );

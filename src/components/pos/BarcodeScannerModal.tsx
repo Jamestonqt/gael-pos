@@ -66,12 +66,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const isMountedRef = useRef<boolean>(true);
   const lastScanTimestampRef = useRef<number>(0);
   const isProcessingScanRef = useRef<boolean>(false);
   const containerId = 'gael-pos-barcode-scanner';
 
   // Check camera support and HTTPS
   useEffect(() => {
+    isMountedRef.current = true;
     if (!isOpen) return;
 
     const isSecure =
@@ -97,7 +99,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setIsHttpsWarning(false);
     startScanner();
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
+      isMountedRef.current = false;
+      window.removeEventListener('keydown', handleKeyDown);
       stopScanner();
     };
   }, [isOpen]);
@@ -107,6 +118,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       setCameraError(null);
       // Wait for DOM element to render
       await new Promise((resolve) => setTimeout(resolve, 150));
+      if (!isMountedRef.current) return;
 
       const elem = document.getElementById(containerId);
       if (!elem) return;
@@ -168,9 +180,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
   const stopScanner = async () => {
     try {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        await html5QrCodeRef.current.stop();
-        html5QrCodeRef.current.clear();
+      if (html5QrCodeRef.current) {
+        try {
+          const state = html5QrCodeRef.current.getState();
+          // Html5QrcodeScannerState: 2 = SCANNING, 3 = PAUSED
+          if (state === 2 || state === 3) {
+            await html5QrCodeRef.current.stop();
+          }
+        } catch {
+          // Ignore state stop check errors
+        }
+        try {
+          html5QrCodeRef.current.clear();
+        } catch {
+          // Ignore clear errors
+        }
       }
     } catch (err) {
       console.warn('Scanner stop error:', err);
@@ -213,13 +237,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     // Play classic high-pitch retail POS beep and trigger mobile vibration
     playSound.scanBeep();
 
-    // Look up barcode or SKU
-    const matchedProduct = products.find(
-      (p) =>
-        p.is_active &&
-        (p.barcode.toLowerCase() === cleanCode.toLowerCase() ||
-          p.sku.toLowerCase() === cleanCode.toLowerCase())
-    );
+    const cleanLower = cleanCode.toLowerCase();
+    const cleanStripped = cleanLower.replace(/^0+/, '');
+
+    // Look up barcode or SKU (with support for stripped leading zero)
+    const matchedProduct = products.find((p) => {
+      if (!p.is_active) return false;
+      const pBarcode = (p.barcode || '').trim().toLowerCase();
+      const pSku = (p.sku || '').trim().toLowerCase();
+      return (
+        pBarcode === cleanLower ||
+        pSku === cleanLower ||
+        (cleanStripped && pBarcode.replace(/^0+/, '') === cleanStripped) ||
+        (cleanStripped && pSku.replace(/^0+/, '') === cleanStripped)
+      );
+    });
 
     if (matchedProduct) {
       // Product Found! Add to cart
@@ -397,15 +429,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
               {/* Viewfinder Target Reticle Overlay */}
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="relative w-64 h-44 rounded-2xl border-2 border-brand-500/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                <div className="relative w-64 h-44 border border-white/40 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
                   {/* Glowing Laser Scan Bar */}
                   <div className="absolute inset-x-2 h-0.5 bg-brand-400 shadow-[0_0_8px_#3b82f6] top-1/2 -translate-y-1/2 animate-pulse" />
                   
-                  {/* Corner Accent Brackets */}
-                  <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white rounded-tl" />
-                  <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-white rounded-tr" />
-                  <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white rounded-bl" />
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white rounded-br" />
+                  {/* Corner Accent Ticks */}
+                  <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white" />
+                  <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-white" />
+                  <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white" />
 
                   <div className="absolute -bottom-7 inset-x-0 text-center">
                     <span className="text-[10px] font-bold text-white/90 bg-black/60 px-2.5 py-0.5 rounded-full border border-white/20">
