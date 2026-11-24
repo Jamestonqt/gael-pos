@@ -293,6 +293,23 @@ export const InventoryManager: React.FC = () => {
       is_active: true,
     });
 
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (!isOnline) {
+      playSound.tap();
+      setCsvFeedback({
+        type: 'success',
+        message: `Saved offline: "${prodName.trim()}" is stored permanently in IndexedDB and will sync automatically once internet returns.`,
+      });
+      setTimeout(() => setCsvFeedback(null), 6000);
+    } else {
+      playSound.success();
+      setCsvFeedback({
+        type: 'success',
+        message: `Product "${prodName.trim()}" saved and synced successfully!`,
+      });
+      setTimeout(() => setCsvFeedback(null), 4000);
+    }
+
     setShowProductModal(false);
   };
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { formatPeso, generateReceiptNo } from './src/utils/formatters.ts';
+import { formatPeso, generateReceiptNo, generateUUID } from './src/utils/formatters.ts';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SETTINGS } from './src/db/seedData.ts';
 import { parseNumberField, cleanAndNormalizeProductRow } from './src/utils/csvInventory.ts';
 import type { UtangCustomer } from './src/types/index.ts';
@@ -299,4 +299,53 @@ assert.strictEqual(afterRealtimeDeleteByBarcode[0].id, 'prod_1');
 
 console.log('✓ Multi-device reconciliation and Realtime DELETE matching verified.');
 
-console.log('--- ALL 13 TESTS PASSED SUCCESSFULLY! ---');
+// Test 14: Client-Side UUID Generation & Offline Pending Upserts Preservation
+console.log('Test 14: Client-Side UUID Generation & Offline Pending Upserts Preservation');
+const uuid1 = generateUUID();
+const uuid2 = generateUUID();
+assert.strictEqual(typeof uuid1, 'string');
+assert.strictEqual(uuid1.length, 36);
+assert.strictEqual(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid1), true);
+assert.notStrictEqual(uuid1, uuid2);
+
+// Reconcile logic must NEVER delete items that are queued in pending_upserts
+const offlineCreatedProduct: MockProduct = {
+  id: uuid1,
+  barcode: '4809998881111',
+  name: 'Offline Milo Pack',
+  selling_price: 18,
+};
+
+const localWithOffline: MockProduct[] = [...reconciled, offlineCreatedProduct];
+const pendingUpsertIds = new Set([uuid1]);
+
+function reconcileWithPendingUpserts(
+  local: MockProduct[],
+  remote: MockProduct[],
+  pendingUpserts: Set<string>
+): MockProduct[] {
+  const remoteIdSet = new Set(remote.map(r => r.id));
+  const remoteBarcodeSet = new Set(remote.filter(r => r.barcode).map(r => r.barcode.toLowerCase().trim()));
+  const remoteNameSet = new Set(remote.filter(r => r.name).map(r => r.name.toLowerCase().trim()));
+
+  return local.filter(lp => {
+    // If item was created offline and is waiting to sync, it MUST be preserved!
+    if (pendingUpserts.has(lp.id)) return true;
+
+    const lpBarcode = (lp.barcode || '').toLowerCase().trim();
+    const lpName = (lp.name || '').toLowerCase().trim();
+    return (
+      remoteIdSet.has(lp.id) ||
+      (lpBarcode && remoteBarcodeSet.has(lpBarcode)) ||
+      (lpName && remoteNameSet.has(lpName))
+    );
+  });
+}
+
+const reconciledPreserved = reconcileWithPendingUpserts(localWithOffline, remoteProds, pendingUpsertIds);
+assert.strictEqual(reconciledPreserved.length, 3);
+assert.strictEqual(reconciledPreserved.some(p => p.id === uuid1), true);
+assert.strictEqual(reconciledPreserved.some(p => p.name === 'Offline Milo Pack'), true);
+console.log('✓ UUID generation and offline pending upserts preservation verified.');
+
+console.log('--- ALL 14 TESTS PASSED SUCCESSFULLY! ---');

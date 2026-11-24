@@ -2,7 +2,13 @@ import { Product, Sale, UtangCustomer, UtangTransaction, WalletLog, StoreSetting
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SETTINGS, DEMO_PRODUCT_IDS } from './seedData';
 
 const DB_NAME = 'GaelPosDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
+
+export interface PendingUpsertRecord {
+  id: string; // productId
+  product: Product;
+  timestamp: string;
+}
 
 export interface PendingDeleteRecord {
   id: string; // productId
@@ -117,6 +123,9 @@ export class PosDatabase {
           }
           if (!db.objectStoreNames.contains('pending_deletes')) {
             db.createObjectStore('pending_deletes', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('pending_upserts')) {
+            db.createObjectStore('pending_upserts', { keyPath: 'id' });
           }
         };
 
@@ -413,6 +422,28 @@ export class PosDatabase {
 
   async clearAllPendingDeletes(): Promise<void> {
     await this.clear('pending_deletes');
+  }
+
+  // Pending Upserts queue management (for offline-added/updated products)
+  async addPendingUpsert(product: Product): Promise<void> {
+    const record: PendingUpsertRecord = {
+      id: product.id,
+      product,
+      timestamp: new Date().toISOString(),
+    };
+    await this.put('pending_upserts', record);
+  }
+
+  async getPendingUpserts(): Promise<PendingUpsertRecord[]> {
+    return this.getAll<PendingUpsertRecord>('pending_upserts');
+  }
+
+  async clearPendingUpsert(id: string): Promise<void> {
+    await this.delete('pending_upserts', id);
+  }
+
+  async clearAllPendingUpserts(): Promise<void> {
+    await this.clear('pending_upserts');
   }
 
   // Export full JSON backup

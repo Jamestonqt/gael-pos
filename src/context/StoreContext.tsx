@@ -15,7 +15,7 @@ import {
 } from '../types';
 import { posDb } from '../db/indexedDb';
 import { checkNetworkAndSyncStatus, syncWithSupabase, getSupabaseClient, isSupabaseConfigured } from '../db/supabaseClient';
-import { generateId, generateReceiptNo } from '../utils/formatters';
+import { generateId, generateReceiptNo, generateUUID } from '../utils/formatters';
 import { INITIAL_SETTINGS, DEMO_PRODUCT_IDS } from '../db/seedData';
 import { DEFAULT_CATEGORIES } from '../utils/categoryIcons';
 import { ParsedProductRow, cleanAndNormalizeProductRow } from '../utils/csvInventory';
@@ -117,7 +117,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const loadAllData = useCallback(async () => {
     try {
       await posDb.init();
-      const [prods, custs, txs, sls, wLogs, stg, pendingDeletes] = await Promise.all([
+      const [prods, custs, txs, sls, wLogs, stg, pendingDeletes, pendingUpserts] = await Promise.all([
         posDb.getAll<Product>('products'),
         posDb.getAll<UtangCustomer>('utang_customers'),
         posDb.getAll<UtangTransaction>('utang_transactions'),
@@ -125,24 +125,38 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         posDb.getAll<WalletLog>('wallet_logs'),
         posDb.getSettings(),
         posDb.getPendingDeletes(),
+        posDb.getPendingUpserts(),
       ]);
 
-      const pendingIds = new Set(pendingDeletes.map((d) => d.productId));
-      const pendingBarcodes = new Set(
+      const pendingDeleteIds = new Set(pendingDeletes.map((d) => d.productId));
+      const pendingDeleteBarcodes = new Set(
         pendingDeletes.filter((d) => d.barcode).map((d) => d.barcode!.toLowerCase().trim())
       );
-      const pendingNames = new Set(
+      const pendingDeleteNames = new Set(
         pendingDeletes.filter((d) => d.name).map((d) => d.name!.toLowerCase().trim())
       );
 
-      const cleanProds = prods.filter(
-        (p) =>
+      // Map indexedDB products
+      const productMap = new Map<string, Product>();
+      for (const p of prods) {
+        if (
           !DEMO_PRODUCT_IDS.includes(p.id) &&
-          !pendingIds.has(p.id) &&
-          (!p.barcode || !pendingBarcodes.has(p.barcode.toLowerCase().trim())) &&
-          (!p.name || !pendingNames.has(p.name.toLowerCase().trim()))
-      );
-      setProducts(cleanProds);
+          !pendingDeleteIds.has(p.id) &&
+          (!p.barcode || !pendingDeleteBarcodes.has(p.barcode.toLowerCase().trim())) &&
+          (!p.name || !pendingDeleteNames.has(p.name.toLowerCase().trim()))
+        ) {
+          productMap.set(p.id, p);
+        }
+      }
+
+      // Also ensure all offline pending_upserts are loaded into memory and rendered immediately
+      for (const u of pendingUpserts) {
+        if (!pendingDeleteIds.has(u.id) && !DEMO_PRODUCT_IDS.includes(u.id)) {
+          productMap.set(u.id, u.product);
+        }
+      }
+
+      setProducts(Array.from(productMap.values()));
       setCustomers(custs);
       setTransactions(txs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       setSales(sls.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
@@ -737,14 +751,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const saveProduct = async (
     productData: Partial<Product> & { name: string; selling_price: number }
   ): Promise<Product> => {
-    const isNew = !productData.id;
-    const prodId = productData.id || generateId('prod');
+    // 1. Generate client-side UUID for product.id so it has a valid primary key immediately in both IndexedDB and Supabase
+    const prodId = productData.id || generateUUID();
+    const now = new Date().toISOString();
 
     const product: Product = {
       id: prodId,
       sku: productData.sku || `SKU-${Date.now().toString().slice(-6)}`,
-      barcode: productData.barcode || '',
-      name: productData.name,
+      barcode: productData.barcode ? productData.barcode.trim() : '',
+      name: productData.name.trim(),
       category: productData.category || 'Other',
       unit_label: productData.unit_label || 'pc',
       pack_size: Number(productData.pack_size) || 1,
@@ -755,15 +770,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       has_bottle_deposit: Boolean(productData.has_bottle_deposit),
       bottle_deposit_fee: Number(productData.bottle_deposit_fee) || 0,
       is_active: productData.is_active !== undefined ? productData.is_active : true,
-      updated_at: new Date().toISOString(),
+      created_at: productData.created_at || now,
+      updated_at: now,
     };
 
+    // 2. LOCAL-FIRST SAVE: Immediately write to local IndexedDB and update React state FIRST
     await posDb.put('products', product);
-    await posDb.addToSyncQueue({
-      table: 'products',
-      action: isNew ? 'insert' : 'update',
-      data: product,
-    });
 
     setProducts((prev) => {
       const idx = prev.findIndex((p) => p.id === product.id);
@@ -774,6 +786,48 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return [product, ...prev];
     });
+
+    // 3. Queue in pending_upserts and attempt Supabase push
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const client = getSupabaseClient();
+    const isConfigured = isSupabaseConfigured();
+
+    if (isOnline && isConfigured && client) {
+      try {
+        const payload = {
+          id: product.id,
+          sku: product.sku || null,
+          barcode: product.barcode && product.barcode.trim() ? product.barcode.trim() : null,
+          name: product.name,
+          category: product.category,
+          unit_label: product.unit_label || 'pc',
+          pack_size: product.pack_size || 1,
+          cost_price: Number(product.cost_price.toFixed(2)),
+          selling_price: Number(product.selling_price.toFixed(2)),
+          stock_qty: Math.round(product.stock_qty),
+          low_stock_threshold: product.low_stock_threshold || 5,
+          has_bottle_deposit: Boolean(product.has_bottle_deposit),
+          bottle_deposit_fee: Number(product.bottle_deposit_fee || 0),
+          is_active: product.is_active !== false,
+          created_at: product.created_at,
+          updated_at: product.updated_at,
+        };
+
+        const { error } = await client.from('products').upsert(payload, { onConflict: 'id' });
+        if (error) {
+          console.warn('Supabase upsert failed, saving in pending_upserts queue:', error.message);
+          await posDb.addPendingUpsert(product);
+        } else {
+          await posDb.clearPendingUpsert(product.id);
+        }
+      } catch (err: any) {
+        console.warn('Network error while upserting product to Supabase, queuing offline:', err?.message);
+        await posDb.addPendingUpsert(product);
+      }
+    } else {
+      // Offline: save in pending_upserts queue so it syncs automatically once internet returns
+      await posDb.addPendingUpsert(product);
+    }
 
     return product;
   };
