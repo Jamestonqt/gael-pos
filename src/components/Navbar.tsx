@@ -174,7 +174,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur text-white shadow-lg border-b border-slate-800">
+      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur text-white shadow-lg border-b border-slate-800 print:hidden">
         <div className="max-w-7xl mx-auto px-3 sm:px-4">
           {/* Top Brand & Status Bar */}
           <div className="flex items-center justify-between h-12 sm:h-13 gap-2">

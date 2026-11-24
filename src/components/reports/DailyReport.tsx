@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Sale } from '../../types';
+import { Sale, WalletLog } from '../../types';
 import { formatPeso, formatDateTime } from '../../utils/formatters';
+import { playSound } from '../../utils/audio';
 import {
   BarChart3,
   TrendingUp,
@@ -28,7 +29,7 @@ export const DailyReport: React.FC = () => {
     new Date().toISOString().slice(0, 10)
   );
 
-  // Void modal state
+  // Void modal state (Sales)
   const [voidTargetSale, setVoidTargetSale] = useState<Sale | null>(null);
   const [ownerPinInput, setOwnerPinInput] = useState<string>('');
   const [voidError, setVoidError] = useState<string | null>(null);
@@ -46,8 +47,9 @@ export const DailyReport: React.FC = () => {
     return daySales.filter((s) => s.status === 'Completed');
   }, [daySales]);
 
+  // Exclude voided wallet logs from report totals
   const dayWalletLogs = useMemo(() => {
-    return walletLogs.filter((w) => (w.created_at || '').slice(0, 10) === selectedDate);
+    return walletLogs.filter((w) => !w.is_voided && (w.created_at || '').slice(0, 10) === selectedDate);
   }, [walletLogs, selectedDate]);
 
   const dayTransactions = useMemo(() => {
@@ -619,6 +621,246 @@ export const DailyReport: React.FC = () => {
 
       {/* View Historical Receipt Modal */}
       <ReceiptModal sale={viewReceiptSale} onClose={() => setViewReceiptSale(null)} />
+
+      {/* Official Printable Z-Reading & Profit Report (Printed when Print Report is clicked) */}
+      {!viewReceiptSale && (
+        <div
+          id="printable-zreading"
+          className="hidden print:block font-sans text-slate-950 bg-white leading-tight"
+        >
+          {/* Header */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-4 text-center">
+            <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+              {settings.store_name || 'Gael Store'}
+            </h1>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-700 mt-1">
+              Official Daily Z-Reading & Profit Report
+            </h2>
+            <div className="flex justify-between items-center text-xs text-slate-600 mt-3 pt-2 border-t border-dashed border-slate-300">
+              <div>
+                <strong>Sales Date:</strong>{' '}
+                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-PH', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </div>
+              <div>
+                <strong>Printed On:</strong> {new Date().toLocaleString('en-PH')}
+              </div>
+            </div>
+          </div>
+
+          {/* 1. Core Summary Table */}
+          <div className="mb-4 page-break-inside-avoid">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 mb-1.5 border-b border-slate-400 pb-1">
+              1. Sales & Profit Performance
+            </h3>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-3 border border-slate-400 rounded">
+                <div className="text-[10px] uppercase font-bold text-slate-600">
+                  Gross Sales (Today)
+                </div>
+                <div className="text-lg font-black text-slate-950 mt-0.5">
+                  {formatPeso(grossSales)}
+                </div>
+                <div className="text-[10px] text-slate-600 mt-0.5">
+                  {completedSales.length} Completed Transactions
+                </div>
+              </div>
+
+              <div className="p-3 border border-slate-400 rounded bg-slate-50">
+                <div className="text-[10px] uppercase font-bold text-slate-600">
+                  Net Profit (Total Tubo)
+                </div>
+                <div className="text-lg font-black text-slate-950 mt-0.5">
+                  {formatPeso(totalNetProfit)}
+                </div>
+                <div className="text-[10px] text-slate-600 mt-0.5">
+                  Products: {formatPeso(salesNetProfit)} | Services: {formatPeso(walletFeesEarned)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Cash & Payments Breakdown */}
+          <div className="mb-4 page-break-inside-avoid">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 mb-1.5 border-b border-slate-400 pb-1">
+              2. Cash & Payment Method Reconciliation
+            </h3>
+            <table className="w-full text-xs border border-slate-300">
+              <tbody className="divide-y divide-slate-200">
+                <tr>
+                  <td className="p-1.5 font-semibold text-slate-700">Cash from Product Sales:</td>
+                  <td className="p-1.5 text-right font-bold text-slate-900">{formatPeso(cashSalesTotal)}</td>
+                </tr>
+                <tr>
+                  <td className="p-1.5 font-semibold text-slate-700">Cash from Suki Credit (Utang) Payments:</td>
+                  <td className="p-1.5 text-right font-bold text-slate-900">{formatPeso(utangCashPayments)}</td>
+                </tr>
+                <tr>
+                  <td className="p-1.5 font-semibold text-slate-700">Cash from E-Load & Digital Wallet Services:</td>
+                  <td className="p-1.5 text-right font-bold text-slate-900">{formatPeso(walletCashCollected)}</td>
+                </tr>
+                <tr className="bg-slate-100 font-black">
+                  <td className="p-2 text-slate-950 uppercase">Total Physical Cash Collected:</td>
+                  <td className="p-2 text-right text-slate-950 text-sm">{formatPeso(totalCashCollected)}</td>
+                </tr>
+                <tr>
+                  <td className="p-1.5 font-semibold text-slate-700">GCash & Maya Digital Payments:</td>
+                  <td className="p-1.5 text-right font-bold text-slate-900">{formatPeso(gcashMayaSales)}</td>
+                </tr>
+                <tr>
+                  <td className="p-1.5 font-semibold text-slate-700">New Store Credit Issued (Utang):</td>
+                  <td className="p-1.5 text-right font-bold text-slate-900">{formatPeso(newUtangIssued)}</td>
+                </tr>
+                <tr>
+                  <td className="p-1.5 font-semibold text-slate-700">E-Load & GCash Convenience Fees Earned:</td>
+                  <td className="p-1.5 text-right font-bold text-slate-900">+{formatPeso(walletFeesEarned)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 3. Cash Drawer & Digital Wallets Balance */}
+          <div className="mb-4 page-break-inside-avoid">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 mb-1.5 border-b border-slate-400 pb-1">
+              3. Store Balances & Till Status
+            </h3>
+            <div className="grid grid-cols-3 gap-2 text-xs text-center">
+              <div className="p-2 border border-slate-300 rounded">
+                <div className="text-[10px] text-slate-600 font-bold uppercase">Cash in Till (Drawer)</div>
+                <div className="font-black text-sm text-slate-950 mt-0.5">
+                  {formatPeso(settings.cash_drawer_balance)}
+                </div>
+              </div>
+              <div className="p-2 border border-slate-300 rounded">
+                <div className="text-[10px] text-slate-600 font-bold uppercase">GCash/Maya Balance</div>
+                <div className="font-black text-sm text-slate-950 mt-0.5">
+                  {formatPeso(settings.gcash_wallet_balance)}
+                </div>
+              </div>
+              <div className="p-2 border border-slate-300 rounded">
+                <div className="text-[10px] text-slate-600 font-bold uppercase">Load Wallet Balance</div>
+                <div className="font-black text-sm text-slate-950 mt-0.5">
+                  {formatPeso(settings.load_wallet_balance)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Top Selling Products */}
+          {topSellingProducts.length > 0 && (
+            <div className="mb-4 page-break-inside-avoid">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 mb-1.5 border-b border-slate-400 pb-1">
+                4. Top Selling Products Today
+              </h3>
+              <table className="w-full text-xs border border-slate-300">
+                <thead className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700">
+                  <tr>
+                    <th className="p-1.5 text-left">#</th>
+                    <th className="p-1.5 text-left">Product Name</th>
+                    <th className="p-1.5 text-left">Category</th>
+                    <th className="p-1.5 text-right">Qty Sold</th>
+                    <th className="p-1.5 text-right">Total Sales</th>
+                    <th className="p-1.5 text-right">Net Profit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {topSellingProducts.map((p, idx) => (
+                    <tr key={p.name}>
+                      <td className="p-1.5 font-bold text-slate-500">{idx + 1}</td>
+                      <td className="p-1.5 font-bold text-slate-900">{p.name}</td>
+                      <td className="p-1.5 text-slate-600">{p.category}</td>
+                      <td className="p-1.5 text-right font-bold text-slate-900">{p.quantity} pcs</td>
+                      <td className="p-1.5 text-right text-slate-900">{formatPeso(p.revenue)}</td>
+                      <td className="p-1.5 text-right font-bold text-slate-900">+{formatPeso(p.profit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* 5. Sales Transactions Log */}
+          <div className="mb-4 page-break-inside-avoid">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 mb-1.5 border-b border-slate-400 pb-1">
+              5. Sales Transaction Log ({daySales.length} Records)
+            </h3>
+            {daySales.length === 0 ? (
+              <div className="p-3 text-center text-xs text-slate-400 border border-slate-200 rounded">
+                No transactions recorded for this date.
+              </div>
+            ) : (
+              <table className="w-full text-[11px] border border-slate-300">
+                <thead className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700">
+                  <tr>
+                    <th className="p-1.5 text-left">Receipt #</th>
+                    <th className="p-1.5 text-left">Time</th>
+                    <th className="p-1.5 text-left">Payment</th>
+                    <th className="p-1.5 text-left">Items</th>
+                    <th className="p-1.5 text-right">Amount</th>
+                    <th className="p-1.5 text-right">Profit</th>
+                    <th className="p-1.5 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {daySales.map((s) => (
+                    <tr
+                      key={s.id}
+                      className={s.status === 'Voided' ? 'opacity-50 line-through' : ''}
+                    >
+                      <td className="p-1.5 font-mono font-bold">{s.receipt_no}</td>
+                      <td className="p-1.5 text-slate-600">
+                        {new Date(s.created_at).toLocaleTimeString('en-PH', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        })}
+                      </td>
+                      <td className="p-1.5 font-semibold">{s.payment_method}</td>
+                      <td className="p-1.5 text-slate-600 max-w-[180px] truncate">
+                        {s.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                      </td>
+                      <td className="p-1.5 text-right font-bold">{formatPeso(s.total_amount)}</td>
+                      <td className="p-1.5 text-right">
+                        {s.status === 'Voided' ? '₱0.00' : formatPeso(s.net_profit)}
+                      </td>
+                      <td className="p-1.5 text-center font-bold">{s.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Sign-Off Footer */}
+          <div className="mt-8 pt-4 border-t-2 border-slate-900 grid grid-cols-2 gap-8 text-xs page-break-inside-avoid">
+            <div className="space-y-6">
+              <div>
+                <span className="block font-bold text-slate-700 mb-6">
+                  Prepared by (Cashier / Shift):
+                </span>
+                <div className="border-b border-slate-400 w-4/5 pb-1"></div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Signature over printed name
+                </span>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <span className="block font-bold text-slate-700 mb-6">
+                  Audited & Verified by (Store Owner):
+                </span>
+                <div className="border-b border-slate-400 w-4/5 pb-1"></div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Signature over printed name / Date
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

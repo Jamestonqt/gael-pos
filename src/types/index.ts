@@ -6,7 +6,8 @@ export type ProductCategory =
   | 'Snacks'
   | 'Toiletries/Sachets'
   | 'E-Load & GCash'
-  | 'Other';
+  | 'Other'
+  | (string & {});
 
 export interface Product {
   id: string;
@@ -23,6 +24,7 @@ export interface Product {
   has_bottle_deposit: boolean;
   bottle_deposit_fee: number; // e.g. 10.00
   is_active: boolean;
+  created_at?: string;
   updated_at?: string;
 }
 
@@ -115,6 +117,8 @@ export interface WalletLog {
   gcash_wallet_delta: number;
   cash_drawer_delta: number;
   created_at: string;
+  is_voided?: boolean;
+  voided_at?: string;
 }
 
 export interface StoreSettings {
@@ -128,6 +132,7 @@ export interface StoreSettings {
   gcash_cashout_fee_rate: number;
   bottle_deposit_default_fee: number; // Default ₱10.00
   receipt_counter: number;
+  custom_categories?: string[];
 }
 
 export type SyncState = 'online-synced' | 'offline-mode' | 'local-only' | 'syncing' | 'error';

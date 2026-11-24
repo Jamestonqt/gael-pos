@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Product,
   CartItem,
@@ -14,9 +14,11 @@ import {
   UtangPaymentChannel,
 } from '../types';
 import { posDb } from '../db/indexedDb';
-import { checkNetworkAndSyncStatus, syncWithSupabase } from '../db/supabaseClient';
+import { checkNetworkAndSyncStatus, syncWithSupabase, getSupabaseClient, isSupabaseConfigured } from '../db/supabaseClient';
 import { generateId, generateReceiptNo } from '../utils/formatters';
-import { INITIAL_SETTINGS } from '../db/seedData';
+import { INITIAL_SETTINGS, DEMO_PRODUCT_IDS } from '../db/seedData';
+import { DEFAULT_CATEGORIES } from '../utils/categoryIcons';
+import { ParsedProductRow, cleanAndNormalizeProductRow } from '../utils/csvInventory';
 
 interface CheckoutOptions {
   paymentMethod: PaymentMethod;
@@ -72,19 +74,28 @@ interface StoreContextType {
     feeEarned: number
   ) => Promise<WalletLog>;
 
-  // Inventory
+  // Inventory & Categories
+  categories: string[];
+  addCategory: (name: string) => Promise<{ success: boolean; error?: string }>;
+  deleteCategory: (name: string) => Promise<{ success: boolean; error?: string; affectedCount?: number }>;
   restockProductByPack: (productId: string, packsCount: number) => Promise<void>;
   saveProduct: (productData: Partial<Product> & { name: string; selling_price: number }) => Promise<Product>;
-  deleteProduct: (productId: string) => Promise<void>;
+  deleteProduct: (productId: string) => Promise<{ success: boolean; error?: string }>;
+  clearAllProducts: () => Promise<{ success: boolean; error?: string }>;
 
   // Void / Admin
   voidSale: (saleId: string, pin: string) => Promise<{ success: boolean; error?: string }>;
+  voidWalletTransaction: (logId: string, pin: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<StoreSettings>, pin?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Sync & Backup
   triggerSync: () => Promise<void>;
   exportBackup: () => Promise<string>;
   importBackup: (jsonString: string) => Promise<{ success: boolean; message: string }>;
+  importProductsFromCsv: (
+    items: ParsedProductRow[],
+    mode: 'merge' | 'replace'
+  ) => Promise<{ success: boolean; importedCount: number; updatedCount: number; error?: string }>;
   refreshData: () => Promise<void>;
 }
 
@@ -106,16 +117,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const loadAllData = useCallback(async () => {
     try {
       await posDb.init();
-      const [prods, custs, txs, sls, wLogs, stg] = await Promise.all([
+      const [prods, custs, txs, sls, wLogs, stg, pendingDeletes] = await Promise.all([
         posDb.getAll<Product>('products'),
         posDb.getAll<UtangCustomer>('utang_customers'),
         posDb.getAll<UtangTransaction>('utang_transactions'),
         posDb.getAll<Sale>('sales'),
         posDb.getAll<WalletLog>('wallet_logs'),
         posDb.getSettings(),
+        posDb.getPendingDeletes(),
       ]);
 
-      setProducts(prods);
+      const pendingIds = new Set(pendingDeletes.map((d) => d.productId));
+      const pendingBarcodes = new Set(
+        pendingDeletes.filter((d) => d.barcode).map((d) => d.barcode!.toLowerCase().trim())
+      );
+      const pendingNames = new Set(
+        pendingDeletes.filter((d) => d.name).map((d) => d.name!.toLowerCase().trim())
+      );
+
+      const cleanProds = prods.filter(
+        (p) =>
+          !DEMO_PRODUCT_IDS.includes(p.id) &&
+          !pendingIds.has(p.id) &&
+          (!p.barcode || !pendingBarcodes.has(p.barcode.toLowerCase().trim())) &&
+          (!p.name || !pendingNames.has(p.name.toLowerCase().trim()))
+      );
+      setProducts(cleanProds);
       setCustomers(custs);
       setTransactions(txs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       setSales(sls.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
@@ -140,6 +167,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const handleOnline = async () => {
       const status = await checkNetworkAndSyncStatus();
       setSyncState(status);
+      if (status === 'online-synced') {
+        // Automatically flush pending offline deletes and sync with Supabase
+        triggerSync().catch(() => {});
+      }
     };
     const handleOffline = () => {
       setSyncState('offline-mode');
@@ -647,14 +678,146 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return product;
   };
 
-  const deleteProduct = async (productId: string): Promise<void> => {
-    await posDb.delete('products', productId);
-    await posDb.addToSyncQueue({
-      table: 'products',
-      action: 'delete',
-      data: { id: productId },
-    });
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+  const deleteProduct = async (
+    productId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // Find product details before deletion (needed for fallback matching by barcode or name)
+      const targetProduct =
+        products.find((p) => p.id === productId) ||
+        (await posDb.getById<Product>('products', productId));
+
+      // 1. Delete from local IndexedDB and React state immediately
+      await posDb.delete('products', productId);
+      setProducts((prev) => prev.filter((p) => p.id !== productId));
+
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const client = getSupabaseClient();
+      const isConfigured = isSupabaseConfigured();
+
+      // If offline or Supabase is not configured, queue in pending_deletes
+      if (!isOnline || !isConfigured || !client) {
+        await posDb.addPendingDelete({
+          id: productId,
+          productId,
+          barcode: targetProduct?.barcode,
+          name: targetProduct?.name,
+        });
+        await posDb.addToSyncQueue({
+          table: 'products',
+          action: 'delete',
+          data: { id: productId, barcode: targetProduct?.barcode, name: targetProduct?.name },
+        });
+        return { success: true };
+      }
+
+      // 2. If online, immediately call Supabase delete
+      let deleteSuccess = false;
+      let lastErrorMessage: string | null = null;
+
+      // Primary attempt: Match by ID
+      const { error: idError, count: idCount } = await client
+        .from('products')
+        .delete({ count: 'exact' })
+        .eq('id', productId);
+
+      if (idError) {
+        lastErrorMessage = idError.message;
+      } else if (idCount !== null && idCount > 0) {
+        deleteSuccess = true;
+      }
+
+      // Fallback 1: Match by Barcode if ID didn't match and barcode is present
+      if (!deleteSuccess && !lastErrorMessage && targetProduct?.barcode && targetProduct.barcode.trim()) {
+        const { error: barcodeError, count: barcodeCount } = await client
+          .from('products')
+          .delete({ count: 'exact' })
+          .eq('barcode', targetProduct.barcode.trim());
+
+        if (barcodeError) {
+          lastErrorMessage = barcodeError.message;
+        } else if (barcodeCount !== null && barcodeCount > 0) {
+          deleteSuccess = true;
+        }
+      }
+
+      // Fallback 2: Match by Name if neither ID nor barcode matched
+      if (!deleteSuccess && !lastErrorMessage && targetProduct?.name && targetProduct.name.trim()) {
+        const { error: nameError, count: nameCount } = await client
+          .from('products')
+          .delete({ count: 'exact' })
+          .eq('name', targetProduct.name.trim());
+
+        if (nameError) {
+          lastErrorMessage = nameError.message;
+        } else if (nameCount !== null && nameCount > 0) {
+          deleteSuccess = true;
+        }
+      }
+
+      // Check if error occurred (e.g. RLS blocking delete)
+      if (lastErrorMessage) {
+        console.error('Failed to delete product from Supabase:', lastErrorMessage);
+        // Queue in pending_deletes so it can retry later
+        await posDb.addPendingDelete({
+          id: productId,
+          productId,
+          barcode: targetProduct?.barcode,
+          name: targetProduct?.name,
+        });
+        return {
+          success: false,
+          error: lastErrorMessage,
+        };
+      }
+
+      // Succeeded: clear from pending_deletes if present
+      await posDb.clearPendingDelete(productId);
+      return { success: true };
+    } catch (err: any) {
+      console.error('Unexpected error in deleteProduct:', err);
+      return {
+        success: false,
+        error: err?.message || 'Failed to delete product',
+      };
+    }
+  };
+
+  const clearAllProducts = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const allCurrentProducts = [...products];
+      await posDb.clear('products');
+      localStorage.removeItem('gael_pos_products');
+      setProducts([]);
+
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const client = getSupabaseClient();
+      const isConfigured = isSupabaseConfigured();
+
+      if (!isOnline || !isConfigured || !client) {
+        for (const p of allCurrentProducts) {
+          await posDb.addPendingDelete({
+            id: p.id,
+            productId: p.id,
+            barcode: p.barcode,
+            name: p.name,
+          });
+        }
+        return { success: true };
+      }
+
+      // If online, immediately delete all products from Supabase
+      const { error } = await client.from('products').delete().neq('id', '');
+      if (error) {
+        console.error('Supabase clearAllProducts error:', error);
+        return { success: false, error: error.message };
+      }
+
+      await posDb.clearAllPendingDeletes();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to clear all products' };
+    }
   };
 
   // Void Sale (protected by Owner PIN)
@@ -740,6 +903,40 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true };
   };
 
+  const voidWalletTransaction = async (
+    logId: string,
+    pin: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (pin !== settings.owner_pin) {
+      return { success: false, error: 'Incorrect Owner PIN. Voiding denied.' };
+    }
+
+    const log = walletLogs.find((w) => w.id === logId);
+    if (!log) return { success: false, error: 'Wallet transaction record not found' };
+    if (log.is_voided) return { success: false, error: 'Transaction is already voided' };
+
+    // Reverse the balance changes
+    const newSettings: StoreSettings = {
+      ...settings,
+      load_wallet_balance: Math.max(0, settings.load_wallet_balance - log.load_wallet_delta),
+      gcash_wallet_balance: Math.max(0, settings.gcash_wallet_balance - log.gcash_wallet_delta),
+      cash_drawer_balance: Math.max(0, settings.cash_drawer_balance - log.cash_drawer_delta),
+    };
+    await posDb.saveSettings(newSettings);
+    setSettings(newSettings);
+
+    const updatedLog: WalletLog = {
+      ...log,
+      is_voided: true,
+      voided_at: new Date().toISOString(),
+    };
+    await posDb.put('wallet_logs', updatedLog);
+    await posDb.addToSyncQueue({ table: 'wallet_logs', action: 'update', data: updatedLog });
+
+    setWalletLogs((prev) => prev.map((w) => (w.id === logId ? updatedLog : w)));
+    return { success: true };
+  };
+
   const updateSettings = async (
     newSettings: Partial<StoreSettings>,
     pin?: string
@@ -752,6 +949,89 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await posDb.saveSettings(merged);
     setSettings(merged);
     return { success: true };
+  };
+
+  // Categories logic
+  const categories = useMemo(() => {
+    const base =
+      settings.custom_categories && settings.custom_categories.length > 0
+        ? settings.custom_categories
+        : DEFAULT_CATEGORIES;
+    const set = new Set(base);
+    for (const p of products) {
+      if (p.category && p.category !== 'All' && !set.has(p.category)) {
+        set.add(p.category);
+      }
+    }
+    if (!set.has('Other')) {
+      set.add('Other');
+    }
+    return Array.from(set);
+  }, [settings.custom_categories, products]);
+
+  const addCategory = async (name: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return { success: false, error: 'Category name cannot be empty.' };
+    }
+    if (trimmed.toLowerCase() === 'all') {
+      return { success: false, error: '"All" is a reserved filter name.' };
+    }
+    if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      return { success: false, error: `Category "${trimmed}" already exists.` };
+    }
+
+    const updated = [...categories, trimmed];
+    await updateSettings({ custom_categories: updated });
+    return { success: true };
+  };
+
+  const deleteCategory = async (
+    name: string
+  ): Promise<{ success: boolean; error?: string; affectedCount?: number }> => {
+    const trimmed = name.trim();
+    if (trimmed.toLowerCase() === 'other') {
+      return {
+        success: false,
+        error: 'The "Other" category is required as a fallback and cannot be deleted.',
+      };
+    }
+    if (trimmed.toLowerCase() === 'all') {
+      return { success: false, error: '"All" is a system filter and cannot be deleted.' };
+    }
+
+    // Reassign any products in this category to 'Other'
+    const affectedProducts = products.filter(
+      (p) => p.category?.toLowerCase() === trimmed.toLowerCase()
+    );
+
+    for (const p of affectedProducts) {
+      const updatedProduct: Product = {
+        ...p,
+        category: 'Other',
+        updated_at: new Date().toISOString(),
+      };
+      await posDb.put('products', updatedProduct);
+      await posDb.addToSyncQueue({ table: 'products', action: 'update', data: updatedProduct });
+    }
+
+    if (affectedProducts.length > 0) {
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.category?.toLowerCase() === trimmed.toLowerCase() ? { ...p, category: 'Other' } : p
+        )
+      );
+    }
+
+    const updatedCategories = categories.filter(
+      (c) => c.toLowerCase() !== trimmed.toLowerCase()
+    );
+    if (!updatedCategories.includes('Other')) {
+      updatedCategories.push('Other');
+    }
+
+    await updateSettings({ custom_categories: updatedCategories });
+    return { success: true, affectedCount: affectedProducts.length };
   };
 
   // Sync with Supabase
@@ -782,6 +1062,284 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await loadAllData();
     }
     return result;
+  };
+
+  const importProductsFromCsv = async (
+    items: ParsedProductRow[],
+    mode: 'merge' | 'replace'
+  ): Promise<{ success: boolean; importedCount: number; updatedCount: number; error?: string }> => {
+    try {
+      const now = new Date().toISOString();
+
+      // 1. Clean and normalize all rows, stripping trailing blank lines and currency symbols
+      const cleanedRows = items
+        .map(cleanAndNormalizeProductRow)
+        .filter((it): it is ParsedProductRow => it !== null && Boolean(it.name && it.name.trim()));
+
+      if (cleanedRows.length === 0) {
+        return {
+          success: false,
+          importedCount: 0,
+          updatedCount: 0,
+          error: 'No valid products to import. Please check that the file has a name column.',
+        };
+      }
+
+      // 2. Collect and save any new categories from imported items
+      const newCustomCats = new Set<string>(categories);
+      for (const item of cleanedRows) {
+        if (item.category && item.category !== 'All') {
+          newCustomCats.add(item.category);
+        }
+      }
+      if (!newCustomCats.has('Other')) {
+        newCustomCats.add('Other');
+      }
+      const updatedCategoriesList = Array.from(newCustomCats);
+      await updateSettings({ custom_categories: updatedCategoriesList });
+
+      // 3. Match existing products on ID or Barcode (or Name in merge mode)
+      const client = getSupabaseClient();
+      const isConfigured = isSupabaseConfigured();
+
+      // Read current local products from IndexedDB
+      const existingLocal = await posDb.getAll<Product>('products');
+
+      // Attempt to pre-fetch remote Supabase products if connected to ensure accurate cross-device matching
+      let existingRemote: Product[] = [];
+      if (isConfigured && client && typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          const { data, error: fetchErr } = await client.from('products').select('*');
+          if (!fetchErr && data && Array.isArray(data)) {
+            existingRemote = data;
+          }
+        } catch (e) {
+          console.warn('Pre-fetching remote products failed:', e);
+        }
+      }
+
+      // Build fast lookup maps: ID -> Product, Barcode -> Product, Name -> Product
+      const byId = new Map<string, Product>();
+      const byBarcode = new Map<string, Product>();
+      const byName = new Map<string, Product>();
+
+      // Seed maps: remote products first, then local (local takes precedence if newer)
+      for (const p of [...existingRemote, ...existingLocal]) {
+        if (DEMO_PRODUCT_IDS.includes(p.id)) continue;
+        if (p.id) byId.set(p.id, p);
+        if (p.barcode && p.barcode.trim()) byBarcode.set(p.barcode.trim().toLowerCase(), p);
+        if (p.name && p.name.trim()) byName.set(p.name.trim().toLowerCase(), p);
+      }
+
+      let importedCount = 0;
+      let updatedCount = 0;
+      const finalProductsMap = new Map<string, Product>();
+
+      // If merge mode, preserve current existing local products that are not in DEMO_PRODUCT_IDS
+      if (mode === 'merge') {
+        for (const p of existingLocal) {
+          if (!DEMO_PRODUCT_IDS.includes(p.id)) {
+            finalProductsMap.set(p.id, p);
+          }
+        }
+      }
+
+      // Process each cleaned row
+      for (let idx = 0; idx < cleanedRows.length; idx++) {
+        const item = cleanedRows[idx];
+        const trimmedBarcode = item.barcode ? item.barcode.trim() : '';
+
+        // Match priority: 1. ID, 2. Non-empty Barcode, 3. Name (in merge mode)
+        let match: Product | undefined = undefined;
+        if (item.id && byId.has(item.id)) {
+          match = byId.get(item.id);
+        } else if (trimmedBarcode && byBarcode.has(trimmedBarcode.toLowerCase())) {
+          match = byBarcode.get(trimmedBarcode.toLowerCase());
+        } else if (mode === 'merge' && byName.has(item.name.trim().toLowerCase())) {
+          match = byName.get(item.name.trim().toLowerCase());
+        }
+
+        if (match) {
+          // Update matched existing product
+          updatedCount++;
+          const updatedProd: Product = {
+            ...match,
+            barcode: trimmedBarcode || match.barcode || '',
+            name: item.name,
+            category: item.category || match.category || 'Other',
+            unit_label: item.unit || match.unit_label || 'pc',
+            cost_price: item.cost,
+            selling_price: item.price,
+            stock_qty: item.stock,
+            is_active: true,
+            updated_at: now,
+          };
+          finalProductsMap.set(updatedProd.id, updatedProd);
+          byId.set(updatedProd.id, updatedProd);
+          if (updatedProd.barcode) byBarcode.set(updatedProd.barcode.toLowerCase(), updatedProd);
+          byName.set(updatedProd.name.trim().toLowerCase(), updatedProd);
+        } else {
+          // Insert new product row (when barcode is empty or brand new)
+          importedCount++;
+          const newId = item.id || generateId('prod');
+          const newProd: Product = {
+            id: newId,
+            sku: `SKU-${trimmedBarcode ? trimmedBarcode.slice(-6) : (Date.now() + idx).toString().slice(-6)}`,
+            barcode: trimmedBarcode,
+            name: item.name,
+            category: item.category || 'Other',
+            unit_label: item.unit || 'pc',
+            pack_size: 1,
+            cost_price: item.cost,
+            selling_price: item.price,
+            stock_qty: item.stock,
+            low_stock_threshold: 5,
+            has_bottle_deposit: false,
+            bottle_deposit_fee: 0,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+          };
+          finalProductsMap.set(newProd.id, newProd);
+          byId.set(newProd.id, newProd);
+          if (newProd.barcode) byBarcode.set(newProd.barcode.toLowerCase(), newProd);
+          byName.set(newProd.name.trim().toLowerCase(), newProd);
+        }
+      }
+
+      const finalProductsList = Array.from(finalProductsMap.values());
+
+      // 4. Save to IndexedDB first for offline safety
+      if (mode === 'replace') {
+        await posDb.clear('products');
+      }
+      for (const prod of finalProductsList) {
+        await posDb.put('products', prod);
+      }
+      setProducts(finalProductsList);
+
+      // 5. Immediately run Supabase upsert on the products table
+      if (isConfigured && client) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          // If device is offline, queue changes to sync queue for automatic sync later
+          for (const prod of finalProductsList) {
+            await posDb.addToSyncQueue({ table: 'products', action: 'insert', data: prod });
+          }
+          return {
+            success: true,
+            importedCount,
+            updatedCount,
+            error: 'Saved locally in IndexedDB. Device is offline; products will sync to Supabase once connected.',
+          };
+        }
+
+        // If replace mode, clear remote products table first so old products are wiped
+        if (mode === 'replace') {
+          const { error: delErr } = await client.from('products').delete().neq('id', '');
+          if (delErr) {
+            console.error('Supabase delete during replace failed:', delErr);
+            return {
+              success: false,
+              importedCount,
+              updatedCount,
+              error: `Supabase error while clearing old products: ${delErr.message}`,
+            };
+          }
+        }
+
+        // Prepare records matching the Supabase products table schema
+        const payload = finalProductsList.map((p) => ({
+          id: p.id,
+          sku: p.sku || null,
+          barcode: p.barcode && p.barcode.trim() ? p.barcode.trim() : null,
+          name: p.name,
+          category: p.category,
+          unit_label: p.unit_label || 'pc',
+          pack_size: p.pack_size || 1,
+          cost_price: Number(p.cost_price.toFixed(2)),
+          selling_price: Number(p.selling_price.toFixed(2)),
+          stock_qty: Math.round(p.stock_qty),
+          low_stock_threshold: p.low_stock_threshold || 5,
+          has_bottle_deposit: Boolean(p.has_bottle_deposit),
+          bottle_deposit_fee: Number(p.bottle_deposit_fee || 0),
+          is_active: p.is_active !== false,
+          updated_at: p.updated_at || now,
+        }));
+
+        // Batch upsert in chunks of 100 to avoid payload limits
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+          const chunk = payload.slice(i, i + BATCH_SIZE);
+          const { error: upsertErr } = await client
+            .from('products')
+            .upsert(chunk, { onConflict: 'id' });
+
+          if (upsertErr) {
+            console.error('Supabase upsert failed:', upsertErr);
+            return {
+              success: false,
+              importedCount,
+              updatedCount,
+              error: `Supabase upsert error: ${upsertErr.message}`,
+            };
+          }
+        }
+
+        // 6. Reload products state from Supabase after successful import
+        const { data: remoteData, error: reloadErr } = await client
+          .from('products')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (reloadErr) {
+          console.error('Failed to reload products from Supabase:', reloadErr);
+          return {
+            success: false,
+            importedCount,
+            updatedCount,
+            error: `Products saved, but failed to reload from Supabase: ${reloadErr.message}`,
+          };
+        }
+
+        if (remoteData) {
+          const cleanProds: Product[] = remoteData
+            .filter((p: any) => !DEMO_PRODUCT_IDS.includes(p.id))
+            .map((p: any) => ({
+              id: p.id,
+              sku: p.sku || '',
+              barcode: p.barcode || '',
+              name: p.name,
+              category: p.category,
+              unit_label: p.unit_label || 'pc',
+              pack_size: p.pack_size || 1,
+              cost_price: Number(p.cost_price) || 0,
+              selling_price: Number(p.selling_price) || 0,
+              stock_qty: Math.round(Number(p.stock_qty)) || 0,
+              low_stock_threshold: p.low_stock_threshold || 5,
+              has_bottle_deposit: Boolean(p.has_bottle_deposit),
+              bottle_deposit_fee: Number(p.bottle_deposit_fee) || 0,
+              is_active: p.is_active !== false,
+              updated_at: p.updated_at,
+            }));
+
+          setProducts(cleanProds);
+          // Mirror refreshed products to IndexedDB
+          for (const rp of cleanProds) {
+            await posDb.put('products', rp);
+          }
+        }
+      }
+
+      return { success: true, importedCount, updatedCount };
+    } catch (err: any) {
+      console.error('Error in importProductsFromCsv:', err);
+      return {
+        success: false,
+        importedCount: 0,
+        updatedCount: 0,
+        error: err?.message || 'Failed to import products',
+      };
+    }
   };
 
   const refreshData = async () => {
@@ -816,14 +1374,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordUtangPayment,
         getCustomerTransactions,
         recordWalletTransaction,
+        categories,
+        addCategory,
+        deleteCategory,
         restockProductByPack,
         saveProduct,
         deleteProduct,
+        clearAllProducts,
         voidSale,
+        voidWalletTransaction,
         updateSettings,
         triggerSync,
         exportBackup,
         importBackup,
+        importProductsFromCsv,
         refreshData,
       }}
     >

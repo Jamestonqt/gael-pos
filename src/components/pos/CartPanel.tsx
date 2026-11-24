@@ -194,9 +194,9 @@ export const CartPanel: React.FC = () => {
         </div>
 
         {/* Cart Items List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
           {cart.length === 0 ? (
-            <div className="h-44 flex flex-col items-center justify-center text-center text-slate-400 p-4">
+            <div className="h-44 flex flex-col items-center justify-center text-center text-slate-500 p-4">
               <ShoppingBag className="w-10 h-10 text-slate-300 stroke-[1.5] mb-2" />
               <p className="font-bold text-slate-700 text-sm">Your cart is empty</p>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -215,18 +215,18 @@ export const CartPanel: React.FC = () => {
               return (
                 <div
                   key={item.product.id}
-                  className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all space-y-2"
+                  className="p-3 bg-white hover:bg-slate-50/70 transition-colors space-y-2"
                 >
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-xs sm:text-sm text-slate-900 truncate">
                         {item.product.name}
                       </div>
-                      <div className="text-[11px] text-slate-500">
+                      <div className="text-[11px] text-slate-500 font-mono">
                         {formatPeso(unitPrice)} per {item.product.unit_label || 'pc'}
                       </div>
                     </div>
-                    <div className="font-black text-sm text-slate-900 shrink-0">
+                    <div className="font-black text-sm text-slate-900 font-mono shrink-0">
                       {formatPeso(itemTotal)}
                     </div>
                   </div>
@@ -323,7 +323,7 @@ export const CartPanel: React.FC = () => {
           </div>
 
           {/* Instant Change Calculator */}
-          <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2">
+          <div className="pt-2 border-t border-slate-200 space-y-2">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700">
               <label htmlFor="cash-tendered-input">Cash Tendered:</label>
               <button
@@ -345,7 +345,7 @@ export const CartPanel: React.FC = () => {
                 value={cashTendered}
                 onChange={(e) => setCashTendered(e.target.value)}
                 placeholder={finalTotalAmount > 0 ? finalTotalAmount.toFixed(2) : '0.00'}
-                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg font-black text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg font-black text-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"
               />
             </div>
 

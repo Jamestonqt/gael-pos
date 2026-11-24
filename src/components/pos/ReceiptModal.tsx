@@ -25,8 +25,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose }) => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 print:static print:inset-auto print:bg-white print:p-0 print:m-0 print:block print:overflow-visible print:max-h-none print:w-full">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] print:static print:inset-auto print:bg-white print:p-0 print:m-0 print:max-w-none print:w-full print:border-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible">
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b print:hidden">
           <div className="flex items-center gap-2 text-emerald-600">
@@ -48,7 +48,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, onClose }) => 
         {/* Thermal Printable Receipt */}
         <div
           id="printable-receipt"
-          className="receipt-print-area my-3 p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl font-mono text-xs text-slate-800 overflow-y-auto space-y-3"
+          className="receipt-print-area my-3 p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl font-mono text-xs text-slate-800 overflow-y-auto space-y-3 print:my-0 print:p-0 print:bg-white print:border-none print:overflow-visible print:max-h-none"
         >
           {/* Header */}
           <div className="text-center space-y-1">

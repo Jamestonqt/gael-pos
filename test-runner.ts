@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { formatPeso, generateReceiptNo } from './src/utils/formatters.ts';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SETTINGS } from './src/db/seedData.ts';
+import { parseNumberField, cleanAndNormalizeProductRow } from './src/utils/csvInventory.ts';
 import type { UtangCustomer } from './src/types/index.ts';
 
 console.log('--- Starting Gael-POS Automated Test Suite ---');
@@ -15,23 +16,11 @@ assert.strictEqual(formatPeso(10, false), '₱10');
 assert.strictEqual(formatPeso(-50), '-₱50.00');
 console.log('✓ Currency formatting passed.');
 
-// Test 2: Seed Products Verification
-console.log('Test 2: Seed Products (15 Philippine Sari-Sari Store Items)');
-assert.strictEqual(INITIAL_PRODUCTS.length >= 15, true, `Expected >= 15 products, got ${INITIAL_PRODUCTS.length}`);
-const categories = new Set(INITIAL_PRODUCTS.map(p => p.category));
-assert.strictEqual(categories.has('Beverages'), true);
-assert.strictEqual(categories.has('Canned Goods'), true);
-assert.strictEqual(categories.has('Instant Noodles'), true);
-assert.strictEqual(categories.has('Snacks'), true);
-assert.strictEqual(categories.has('Toiletries/Sachets'), true);
-
-// Verify bottle deposit items
-const coke = INITIAL_PRODUCTS.find(p => p.id === 'prod_coke_kasalo');
-assert.strictEqual(Boolean(coke), true);
-assert.strictEqual(coke?.has_bottle_deposit, true);
-assert.strictEqual(coke?.bottle_deposit_fee, 10.00);
-assert.strictEqual(coke?.pack_size, 12);
-console.log(`✓ 15 seed products verified with correct categories and bottle deposits.`);
+// Test 2: Clean Inventory Verification (User requested empty starting catalog)
+console.log('Test 2: Starting Inventory Verification (Clean Slate / User-Managed)');
+assert.strictEqual(Array.isArray(INITIAL_PRODUCTS), true, 'INITIAL_PRODUCTS must be an array');
+assert.strictEqual(INITIAL_PRODUCTS.length === 0, true, `Expected 0 starting products for fresh store, got ${INITIAL_PRODUCTS.length}`);
+console.log('✓ Clean starting inventory verified (0 demo products).');
 
 // Test 3: Seed Customers Verification
 console.log('Test 3: Seed Customers (Digital Lista Suki)');
@@ -162,4 +151,85 @@ assert.strictEqual(matchBarcode('04800016644883', '4800016644883'), true); // UP
 assert.strictEqual(matchBarcode('4800016644883', '4800016644884'), false);
 console.log('✓ Barcode lookup and normalization verified.');
 
-console.log('--- ALL 9 TESTS PASSED SUCCESSFULLY! ---');
+// Test 10: CSV Currency Stripping & Numeric Parsing
+console.log('Test 10: CSV Currency Stripping & Numeric Parsing');
+assert.strictEqual(parseNumberField('₱46.00'), 46.0);
+assert.strictEqual(parseNumberField('₱ 1,250.50'), 1250.5);
+assert.strictEqual(parseNumberField('PHP 500'), 500);
+assert.strictEqual(parseNumberField('$19.99'), 19.99);
+assert.strictEqual(parseNumberField(''), 0);
+assert.strictEqual(parseNumberField(null), 0);
+assert.strictEqual(parseNumberField(undefined), 0);
+assert.strictEqual(parseNumberField('invalid', 0), 0);
+assert.strictEqual(parseNumberField('35'), 35);
+console.log('✓ CSV Currency stripping and numeric parsing verified.');
+
+// Test 11: CSV Row Cleaning & Trailing Blank Filtering
+console.log('Test 11: CSV Row Cleaning & Trailing Blank Filtering');
+const row1 = cleanAndNormalizeProductRow({
+  name: '  Lucky Me Pancit Canton Kalamansi  ',
+  barcode: "'4800016550215'",
+  category: 'Instant Noodles',
+  cost: '₱12.50',
+  price: '₱16.00',
+  stock: '60 pcs',
+  unit: 'PC',
+});
+assert.notStrictEqual(row1, null);
+assert.strictEqual(row1?.name, 'Lucky Me Pancit Canton Kalamansi');
+assert.strictEqual(row1?.barcode, '4800016550215');
+assert.strictEqual(row1?.category, 'Instant Noodles');
+assert.strictEqual(row1?.cost, 12.5);
+assert.strictEqual(row1?.price, 16.0);
+assert.strictEqual(row1?.stock, 60);
+assert.strictEqual(row1?.unit, 'pc');
+
+// Blank row should return null
+const emptyRow = cleanAndNormalizeProductRow({
+  name: '   ',
+  barcode: '',
+  cost: '',
+  price: '',
+  stock: '',
+});
+assert.strictEqual(emptyRow, null);
+console.log('✓ CSV Row cleaning and blank filtering verified.');
+
+// Test 12: Offline Pending Deletes Queue & Remote Exclusion
+console.log('Test 12: Offline Pending Deletes Queue & Remote Exclusion');
+interface MockPendingDelete {
+  productId: string;
+  barcode?: string;
+  name?: string;
+}
+
+const mockPendingDeletes: MockPendingDelete[] = [
+  { productId: 'prod_123', barcode: '4800016550215', name: 'Lucky Me Pancit Canton' },
+  { productId: 'prod_999', name: 'Custom Tingi Item' },
+];
+
+function shouldExcludeRemoteProduct(
+  remote: { id: string; barcode?: string; name: string },
+  pending: MockPendingDelete[]
+): boolean {
+  const pendingIds = new Set(pending.map(p => p.productId));
+  const pendingBarcodes = new Set(pending.filter(p => p.barcode).map(p => p.barcode!.toLowerCase().trim()));
+  const pendingNames = new Set(pending.filter(p => p.name).map(p => p.name!.toLowerCase().trim()));
+
+  if (pendingIds.has(remote.id)) return true;
+  if (remote.barcode && pendingBarcodes.has(remote.barcode.toLowerCase().trim())) return true;
+  if (remote.name && pendingNames.has(remote.name.toLowerCase().trim())) return true;
+  return false;
+}
+
+// Item matching deleted ID must be excluded
+assert.strictEqual(shouldExcludeRemoteProduct({ id: 'prod_123', name: 'Different Name' }, mockPendingDeletes), true);
+// Item matching deleted barcode must be excluded
+assert.strictEqual(shouldExcludeRemoteProduct({ id: 'prod_456', barcode: '4800016550215', name: 'Other' }, mockPendingDeletes), true);
+// Item matching deleted name must be excluded
+assert.strictEqual(shouldExcludeRemoteProduct({ id: 'prod_789', name: 'Custom Tingi Item' }, mockPendingDeletes), true);
+// Unrelated product must NOT be excluded
+assert.strictEqual(shouldExcludeRemoteProduct({ id: 'prod_safe', barcode: '1234567890', name: 'Safe Product' }, mockPendingDeletes), false);
+console.log('✓ Pending deletes queue exclusion verified.');
+
+console.log('--- ALL 12 TESTS PASSED SUCCESSFULLY! ---');

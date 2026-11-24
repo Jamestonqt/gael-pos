@@ -55,6 +55,8 @@ export default defineConfig({
           supabase: ['@supabase/supabase-js'],
           idb: ['idb'],
           scanner: ['html5-qrcode'],
+          xlsx: ['xlsx'],
+          csv: ['papaparse'],
         }
       }
     }

@@ -47,27 +47,118 @@
 
 /* Touch-optimized button states */
 .touch-btn {
-  @apply active:scale-[0.98] transition-transform duration-75 select-none;
+  transition-property: transform;
+  transition-duration: 75ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.touch-btn:active {
+  transform: scale(0.98);
 }
 
-/* Thermal receipt printable styling */
+/* Print styling for Thermal Receipt and Daily Z-Reading Report */
 @media print {
+  @page {
+    margin: 4mm;
+    size: auto;
+  }
+
+  header,
+  nav,
+  button,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
   body * {
     visibility: hidden;
   }
-  #printable-receipt, #printable-receipt * {
-    visibility: visible;
+
+  /* 1. Thermal Receipt Print (supports standard 58mm and 80mm thermal rolls) */
+  #printable-receipt,
+  #printable-receipt * {
+    visibility: visible !important;
   }
+
   #printable-receipt {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 10px;
-    background: white;
-    color: black;
-    box-shadow: none;
-    border: none;
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 6px 8px !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    display: block !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #printable-receipt img {
+    max-width: 48px !important;
+    max-height: 48px !important;
+    margin: 0 auto 4px auto !important;
+    border: none !important;
+    border-radius: 0 !important;
+    display: block !important;
+  }
+
+  #printable-receipt .border-dashed {
+    border-color: #000 !important;
+  }
+
+  #printable-receipt * {
+    background: transparent !important;
+    color: #000 !important;
+  }
+
+  /* 2. Daily Z-Reading & Profit Report Print */
+  #printable-zreading,
+  #printable-zreading * {
+    visibility: visible !important;
+  }
+
+  #printable-zreading {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    border: none !important;
+    display: block !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Page break rules for clean multi-page printouts */
+  .page-break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

@@ -1,8 +1,16 @@
 import { Product, Sale, UtangCustomer, UtangTransaction, WalletLog, StoreSettings } from '../types';
-import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SETTINGS } from './seedData';
+import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SETTINGS, DEMO_PRODUCT_IDS } from './seedData';
 
 const DB_NAME = 'GaelPosDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+export interface PendingDeleteRecord {
+  id: string; // productId
+  productId: string;
+  barcode?: string;
+  name?: string;
+  timestamp: string;
+}
 
 export interface SyncQueueItem {
   id: string;
@@ -107,6 +115,9 @@ export class PosDatabase {
           if (!db.objectStoreNames.contains('sync_queue')) {
             db.createObjectStore('sync_queue', { keyPath: 'id' });
           }
+          if (!db.objectStoreNames.contains('pending_deletes')) {
+            db.createObjectStore('pending_deletes', { keyPath: 'id' });
+          }
         };
 
         request.onsuccess = async (event: Event) => {
@@ -131,22 +142,52 @@ export class PosDatabase {
   }
 
   private async seedIfNeeded(): Promise<void> {
+    // Purge any legacy hardcoded demo products from earlier runs
+    for (const demoId of DEMO_PRODUCT_IDS) {
+      await this.delete('products', demoId);
+    }
+
+    // Use a one-time seed flag so users can safely delete all products
+    // without the app re-inserting demo data on the next page load.
+    const seeded = await this.getById<{ id: string; value: boolean }>('settings', 'has_seeded_products');
+    if (seeded?.value) {
+      // Already seeded once — never re-insert products automatically again.
+      const customers = await this.getAll<UtangCustomer>('utang_customers');
+      if (customers.length === 0) {
+        await this._seedCustomers();
+      }
+      const settings = await this.getSettings();
+      if (!settings) {
+        await this.saveSettings(INITIAL_SETTINGS);
+      }
+      return;
+    }
+
     const products = await this.getAll<Product>('products');
-    if (products.length === 0) {
-      console.log('Seeding initial sari-sari store products...');
+    if (products.length === 0 && INITIAL_PRODUCTS.length > 0) {
       for (const p of INITIAL_PRODUCTS) {
         await this.put('products', p);
       }
     }
 
+    await this._seedCustomers();
+
+    const settings = await this.getSettings();
+    if (!settings) {
+      await this.saveSettings(INITIAL_SETTINGS);
+    }
+
+    // Mark seeded — from now on, an empty products store means the user cleared it intentionally.
+    await this.put('settings', { id: 'has_seeded_products', value: true } as any);
+  }
+
+  private async _seedCustomers(): Promise<void> {
     const customers = await this.getAll<UtangCustomer>('utang_customers');
     if (customers.length === 0) {
-      console.log('Seeding initial utang customers...');
       for (const c of INITIAL_CUSTOMERS) {
         await this.put('utang_customers', c);
       }
 
-      // Add seed transactions for initial customer balances
       const nenaTx: UtangTransaction = {
         id: 'tx_seed_nena_1',
         customer_id: 'cust_aling_nena',
@@ -173,17 +214,17 @@ export class PosDatabase {
       };
       await this.put('utang_transactions', bertingTx);
     }
-
-    const settings = await this.getSettings();
-    if (!settings) {
-      await this.saveSettings(INITIAL_SETTINGS);
-    }
   }
 
   private seedFallbackIfNeeded(): void {
-    const products = fallbackStorage.getStore<Product>('products');
-    if (products.length === 0) {
-      fallbackStorage.setStore('products', INITIAL_PRODUCTS);
+    // Purge demo items from fallback storage
+    for (const demoId of DEMO_PRODUCT_IDS) {
+      fallbackStorage.deleteItem('products', demoId);
+    }
+
+    const hasSeeded = localStorage.getItem('gael_pos_has_seeded_products');
+    if (!hasSeeded) {
+      localStorage.setItem('gael_pos_has_seeded_products', 'true');
     }
 
     const customers = fallbackStorage.getStore<UtangCustomer>('utang_customers');
@@ -273,6 +314,26 @@ export class PosDatabase {
     });
   }
 
+  async clear(storeName: string): Promise<void> {
+    if (this.isFallback || !this.db) {
+      fallbackStorage.setStore(storeName, []);
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = this.db!.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      } catch (e) {
+        fallbackStorage.setStore(storeName, []);
+        resolve();
+      }
+    });
+  }
+
   async getSettings(): Promise<StoreSettings | null> {
     if (this.isFallback || !this.db) {
       const raw = localStorage.getItem('gael_pos_settings');
@@ -330,6 +391,28 @@ export class PosDatabase {
 
   async clearSyncQueueItem(id: string): Promise<void> {
     await this.delete('sync_queue', id);
+  }
+
+  // Pending Deletes queue management (for offline-deleted items)
+  async addPendingDelete(item: Omit<PendingDeleteRecord, 'timestamp'>): Promise<void> {
+    const record: PendingDeleteRecord = {
+      ...item,
+      id: item.id || item.productId,
+      timestamp: new Date().toISOString(),
+    };
+    await this.put('pending_deletes', record);
+  }
+
+  async getPendingDeletes(): Promise<PendingDeleteRecord[]> {
+    return this.getAll<PendingDeleteRecord>('pending_deletes');
+  }
+
+  async clearPendingDelete(id: string): Promise<void> {
+    await this.delete('pending_deletes', id);
+  }
+
+  async clearAllPendingDeletes(): Promise<void> {
+    await this.clear('pending_deletes');
   }
 
   // Export full JSON backup

@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Product, ProductCategory } from '../../types';
 import { useStore } from '../../context/StoreContext';
 import { formatPeso } from '../../utils/formatters';
+import { CategoryIcon } from '../../utils/categoryIcons';
 import {
   Search,
   Plus,
@@ -17,33 +18,46 @@ import {
   Layers,
   Wine,
   Camera,
+  FolderPlus,
 } from 'lucide-react';
 import { CustomTingiModal } from './CustomTingiModal';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
+import { CategoryManagerModal } from '../common/CategoryManagerModal';
 import { playSound } from '../../utils/audio';
 
 interface CategoryConfig {
   id: ProductCategory;
   label: string;
-  icon: string;
 }
 
-const CATEGORIES: CategoryConfig[] = [
-  { id: 'All', label: 'All Items', icon: '🔲' },
-  { id: 'Beverages', label: 'Beverages', icon: '🥤' },
-  { id: 'Canned Goods', label: 'Canned Goods', icon: '🥫' },
-  { id: 'Instant Noodles', label: 'Noodles', icon: '🍜' },
-  { id: 'Snacks', label: 'Snacks', icon: '🍿' },
-  { id: 'Toiletries/Sachets', label: 'Toiletries', icon: '🧴' },
-  { id: 'Other', label: 'Other', icon: '📦' },
-];
-
 export const ProductGrid: React.FC = () => {
-  const { products, addToCart, addCustomCartItem } = useStore();
+  const { products, addToCart, addCustomCartItem, categories } = useStore();
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+
+  // Auto fallback to 'All' if selected category is deleted
+  useEffect(() => {
+    if (selectedCategory !== 'All' && !categories.includes(selectedCategory)) {
+      setSelectedCategory('All');
+    }
+  }, [categories, selectedCategory]);
+
+  // Dynamic category pill configs based on store categories
+  const categoryConfigs = useMemo<CategoryConfig[]>(() => {
+    const list: CategoryConfig[] = [{ id: 'All', label: 'All Items' }];
+    for (const cat of categories) {
+      if (cat !== 'All') {
+        list.push({
+          id: cat,
+          label: cat,
+        });
+      }
+    }
+    return list;
+  }, [categories]);
 
   // Filter products by category and search (name or barcode)
   const filteredProducts = useMemo(() => {
@@ -78,7 +92,7 @@ export const ProductGrid: React.FC = () => {
           <label htmlFor="pos-search-input" className="sr-only">
             Search products
           </label>
-          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
             <Search className="w-5 h-5" />
           </div>
           <input
@@ -87,7 +101,7 @@ export const ProductGrid: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search item, barcode, or SKU..."
-            className="w-full pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-2xl text-slate-900 font-semibold text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+            className="w-full pl-10 pr-10 py-3 bg-white border border-slate-300 rounded-2xl text-slate-900 font-semibold text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
           />
           {searchQuery ? (
             <button
@@ -96,12 +110,12 @@ export const ProductGrid: React.FC = () => {
                 setSearchQuery('');
               }}
               aria-label="Clear search query"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-700"
             >
               <X className="w-5 h-5" />
             </button>
           ) : (
-            <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-300 pointer-events-none">
+            <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 pointer-events-none">
               <Barcode className="w-5 h-5" />
             </div>
           )}
@@ -136,7 +150,7 @@ export const ProductGrid: React.FC = () => {
 
       {/* Category Pills (Touch scrollable) */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none" role="tablist" aria-label="Product categories">
-        {CATEGORIES.map((cat) => (
+        {categoryConfigs.map((cat) => (
           <button
             key={cat.id}
             role="tab"
@@ -151,14 +165,30 @@ export const ProductGrid: React.FC = () => {
                 : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
             }`}
           >
-            <span className="text-sm">{cat.icon}</span>
+            <CategoryIcon category={cat.id} className="w-4 h-4 shrink-0" />
             <span>{cat.label}</span>
           </button>
         ))}
+
+        {/* Quick Add / Manage Category Button */}
+        <button
+          type="button"
+          onClick={() => {
+            playSound.tap();
+            setShowCategoryModal(true);
+          }}
+          aria-label="Manage categories"
+          title="Add or delete categories"
+          className="touch-btn flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 hover:border-amber-300 transition-all shrink-0 shadow-2xs"
+        >
+          <FolderPlus className="w-3.5 h-3.5 text-amber-600" />
+          <span>+ Category</span>
+        </button>
       </div>
 
       {/* Product Grid Area */}
       <div className="flex-1 overflow-y-auto pr-1">
+        <h2 className="sr-only">Product Catalog</h2>
         {filteredProducts.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-400">
             <Package className="w-12 h-12 stroke-[1.5] text-slate-300 mb-2" />
@@ -197,11 +227,11 @@ export const ProductGrid: React.FC = () => {
                   {/* Top: Category Label & Optional Bottle Deposit Badge */}
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">
                         {product.category}
                       </span>
                       {product.has_bottle_deposit && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded shrink-0">
+                        <span className="text-[11px] font-bold px-1.5 py-0.5 bg-amber-50 text-amber-900 border border-amber-300 rounded shrink-0">
                           +₱{product.bottle_deposit_fee} dep
                         </span>
                       )}
@@ -215,17 +245,17 @@ export const ProductGrid: React.FC = () => {
 
                   {/* Bottom: Crisp Price & Stock Status Pill */}
                   <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between gap-1">
-                    <span className="text-base sm:text-lg font-black text-brand-600 tracking-tight">
+                    <span className="text-base sm:text-lg font-black text-slate-950 font-mono tracking-tight">
                       {formatPeso(product.selling_price)}
                     </span>
 
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
                         isOutOfStock
-                          ? 'bg-red-50 text-red-600 border border-red-200'
+                          ? 'bg-red-50 text-red-700 border border-red-300'
                           : isLowStock
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                          : 'bg-slate-100 text-slate-600'
+                          ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                          : 'bg-slate-100 text-slate-700'
                       }`}
                     >
                       {isOutOfStock ? 'Out of stock' : `${product.stock_qty} ${product.unit_label || 'pcs'}`}
@@ -252,6 +282,13 @@ export const ProductGrid: React.FC = () => {
       <BarcodeScannerModal
         isOpen={showScannerModal}
         onClose={() => setShowScannerModal(false)}
+      />
+
+      {/* Category Manager Modal */}
+      <CategoryManagerModal
+        isOpen={showCategoryModal}
+        onClose={() => setShowCategoryModal(false)}
+        onSelectCategory={(newCat) => setSelectedCategory(newCat)}
       />
     </div>
   );
