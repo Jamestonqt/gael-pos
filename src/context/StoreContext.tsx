@@ -185,6 +185,106 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [loadAllData]);
 
+  // ── Supabase Realtime Subscription for Live Multi-Device Deletions & Sync ──
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    // Initial sync check when online and Supabase is configured
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      triggerSync().catch(() => {});
+    }
+
+    const channel = client
+      .channel('products-realtime-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'products',
+        },
+        async (payload) => {
+          const oldRecord = (payload.old || {}) as { id?: string; barcode?: string; name?: string };
+          const deletedId = oldRecord.id;
+          const deletedBarcode = oldRecord.barcode?.trim().toLowerCase();
+          const deletedName = oldRecord.name?.trim().toLowerCase();
+
+          // 1. Remove from local IndexedDB
+          if (deletedId) {
+            await posDb.delete('products', deletedId);
+          }
+
+          // 2. Remove matching items from React state and clean up duplicate local IndexedDB entries
+          setProducts((prev) => {
+            const matches = prev.filter((p) => {
+              if (deletedId && p.id === deletedId) return true;
+              if (deletedBarcode && (p.barcode || '').trim().toLowerCase() === deletedBarcode) return true;
+              if (deletedName && (p.name || '').trim().toLowerCase() === deletedName) return true;
+              return false;
+            });
+
+            for (const p of matches) {
+              posDb.delete('products', p.id).catch(() => {});
+            }
+
+            return prev.filter((p) => {
+              if (deletedId && p.id === deletedId) return false;
+              if (deletedBarcode && (p.barcode || '').trim().toLowerCase() === deletedBarcode) return false;
+              if (deletedName && (p.name || '').trim().toLowerCase() === deletedName) return false;
+              return true;
+            });
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'products',
+        },
+        async (payload) => {
+          const newProd = payload.new as Product;
+          if (!newProd || !newProd.id || DEMO_PRODUCT_IDS.includes(newProd.id)) return;
+          await posDb.put('products', newProd);
+          setProducts((prev) => {
+            const exists = prev.some((p) => p.id === newProd.id);
+            if (exists) {
+              return prev.map((p) => (p.id === newProd.id ? newProd : p));
+            }
+            return [newProd, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'products',
+        },
+        async (payload) => {
+          const updatedProd = payload.new as Product;
+          if (!updatedProd || !updatedProd.id) return;
+          await posDb.put('products', updatedProd);
+          setProducts((prev) =>
+            prev.map((p) => (p.id === updatedProd.id ? updatedProd : p))
+          );
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Realtime product subscription active on table: products');
+        }
+      });
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, []);
+
   // Cart Totals
   const cartSubtotal = cart.reduce((sum, item) => {
     const price = item.custom_price ?? item.product.selling_price;

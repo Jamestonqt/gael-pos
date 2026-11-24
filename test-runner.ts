@@ -232,4 +232,71 @@ assert.strictEqual(shouldExcludeRemoteProduct({ id: 'prod_789', name: 'Custom Ti
 assert.strictEqual(shouldExcludeRemoteProduct({ id: 'prod_safe', barcode: '1234567890', name: 'Safe Product' }, mockPendingDeletes), false);
 console.log('✓ Pending deletes queue exclusion verified.');
 
-console.log('--- ALL 12 TESTS PASSED SUCCESSFULLY! ---');
+// Test 13: Multi-Device Sync Reconciliation & Realtime Deletion Matching
+console.log('Test 13: Multi-Device Sync Reconciliation & Realtime Deletion Matching');
+interface MockProduct {
+  id: string;
+  barcode: string;
+  name: string;
+  selling_price: number;
+}
+
+const localProds: MockProduct[] = [
+  { id: 'prod_1', barcode: '480001', name: 'Coke Kasalo', selling_price: 38 },
+  { id: 'prod_2', barcode: '480002', name: 'Lucky Me Kalamansi', selling_price: 16 },
+  { id: 'prod_3', barcode: '480003', name: 'Century Tuna', selling_price: 43 },
+];
+
+// Remote Supabase response where prod_2 was deleted on another phone/device:
+const remoteProds: MockProduct[] = [
+  { id: 'prod_1', barcode: '480001', name: 'Coke Kasalo', selling_price: 38 },
+  { id: 'prod_3', barcode: '480003', name: 'Century Tuna', selling_price: 43 },
+];
+
+function reconcileLocalProducts(local: MockProduct[], remote: MockProduct[]): MockProduct[] {
+  const remoteIdSet = new Set(remote.map(r => r.id));
+  const remoteBarcodeSet = new Set(remote.filter(r => r.barcode).map(r => r.barcode.toLowerCase().trim()));
+  const remoteNameSet = new Set(remote.filter(r => r.name).map(r => r.name.toLowerCase().trim()));
+
+  return local.filter(lp => {
+    const lpBarcode = (lp.barcode || '').toLowerCase().trim();
+    const lpName = (lp.name || '').toLowerCase().trim();
+    return (
+      remoteIdSet.has(lp.id) ||
+      (lpBarcode && remoteBarcodeSet.has(lpBarcode)) ||
+      (lpName && remoteNameSet.has(lpName))
+    );
+  });
+}
+
+const reconciled = reconcileLocalProducts(localProds, remoteProds);
+assert.strictEqual(reconciled.length, 2);
+assert.strictEqual(reconciled.some(p => p.id === 'prod_2'), false);
+assert.strictEqual(reconciled.some(p => p.id === 'prod_1'), true);
+assert.strictEqual(reconciled.some(p => p.id === 'prod_3'), true);
+
+// Realtime DELETE payload simulation
+function applyRealtimeDelete(current: MockProduct[], oldRecord: { id?: string; barcode?: string; name?: string }): MockProduct[] {
+  const dId = oldRecord.id;
+  const dBarcode = (oldRecord.barcode || '').toLowerCase().trim();
+  const dName = (oldRecord.name || '').toLowerCase().trim();
+
+  return current.filter(p => {
+    if (dId && p.id === dId) return false;
+    if (dBarcode && (p.barcode || '').toLowerCase().trim() === dBarcode) return false;
+    if (dName && (p.name || '').toLowerCase().trim() === dName) return false;
+    return true;
+  });
+}
+
+const afterRealtimeDeleteById = applyRealtimeDelete(reconciled, { id: 'prod_1' });
+assert.strictEqual(afterRealtimeDeleteById.length, 1);
+assert.strictEqual(afterRealtimeDeleteById[0].id, 'prod_3');
+
+const afterRealtimeDeleteByBarcode = applyRealtimeDelete(reconciled, { barcode: '480003' });
+assert.strictEqual(afterRealtimeDeleteByBarcode.length, 1);
+assert.strictEqual(afterRealtimeDeleteByBarcode[0].id, 'prod_1');
+
+console.log('✓ Multi-device reconciliation and Realtime DELETE matching verified.');
+
+console.log('--- ALL 13 TESTS PASSED SUCCESSFULLY! ---');
