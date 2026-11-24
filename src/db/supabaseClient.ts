@@ -2,8 +2,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SyncState, Product, Sale, UtangCustomer, UtangTransaction, WalletLog } from '../types';
 import { posDb } from './indexedDb';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || 'https://hvowxzerhlwbbmywagsy.supabase.co';
+const SUPABASE_ANON_KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_-UEh34AY5lo9oFIw3y7y-w_PW0yNwMs';
 
 let supabaseInstance: SupabaseClient | null = null;
 
